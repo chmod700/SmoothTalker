@@ -1,23 +1,32 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "ui_accounteditdialog.h"
+#include "TalkerAccount.h"
 #include <QtGui>
 #include <QtNetwork>
 #include <QtWebKit>
 #include <QScriptValueIterator>
 
-MainWindow::MainWindow(QWidget *parent) :
-    QMainWindow(parent)
-    ,ui(new Ui::MainWindow)
-    ,m_ssl(new QSslSocket(this))
-    ,m_engine(new QScriptEngine(this))
-    ,m_token("")
-    ,m_timer(new QTimer(this))
-    ,m_status_lbl(new QLabel(this))
-    ,m_tray_menu(new QMenu(this))
-    ,m_msg_sound(0)
-    ,m_tray(new QSystemTrayIcon(this))
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+    , m_settings(new QSettings(this))
+    , m_net(new QNetworkAccessManager(this))
+    , m_ssl(new QSslSocket(this))
+    , m_engine(new QScriptEngine(this))
+    , m_token("")
+    , m_timer(new QTimer(this))
+    , m_status_lbl(new QLabel(this))
+    , m_acct(0)
+    , m_tray_menu(new QMenu(this))
+    , m_tray(new QSystemTrayIcon(this))
 {
+    // load up our pretty design
     ui->setupUi(this);
+
+    // turn off the toolbar
+    ui->toolBar->hide();
+
     connect(m_ssl, SIGNAL(encrypted()), this, SLOT(socket_encrypted()));
     connect(m_ssl, SIGNAL(sslErrors(QList<QSslError>)), this,
             SLOT(socket_ssl_errors(QList<QSslError>)));
@@ -32,15 +41,54 @@ MainWindow::MainWindow(QWidget *parent) :
     statusBar()->addPermanentWidget(m_status_lbl, 1);
     m_status_lbl->setText(tr("Not Connected"));
 
-    m_msg_sound = new QSound("snd/msg_received.wav", this);
-    m_tray_menu->addAction(QIcon(":img/icons/door_out.png"), "Exit", this, SLOT(close()));
-    m_tray->setIcon(QIcon(":img/icons/transmit.png"));
+    //setup system tray icon
+    m_tray_menu->addAction(QIcon(":img/icons/door_out.png"), tr("E&xit"), this, SLOT(close()));
     m_tray->setContextMenu(m_tray_menu);
+    m_tray->setIcon(QIcon(":img/icons/transmit.png"));
+    m_tray->setToolTip("SmoothTalker");
     m_tray->show();
 
-    connect(m_tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(raise()));
-
     load_settings();
+
+    if (load_accounts() < 1) { // no configured accounts, launch the dialog
+        QDialog *d = new QDialog(this);
+        Ui::AccountEditDialog *dui = new Ui::AccountEditDialog;
+        dui->setupUi(d);
+        while (!d->exec()) {
+            if  (QMessageBox::question(this, tr("Do this later?"),
+                              tr("Do you want to enter your account information later?"),
+                              QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes) {
+                qDebug() << "user cancelled";
+                break;
+            }
+        }
+        TalkerAccount *acct = new TalkerAccount(dui->le_token->text(), dui->le_domain->text());
+        m_accounts.push_back(acct);
+        m_acct = acct;
+        save_accounts();
+        delete dui;
+        d->deleteLater();
+    }
+    m_acct = m_accounts.at(0);
+    qDebug() << "first account" << m_acct->token() << "domain:" << m_acct->domain();
+
+    // get rooms...
+    QUrl url(QString("https://%1.talkerapp.com/rooms.json").arg(m_acct->domain()));
+    QNetworkRequest req(url);
+    req.setRawHeader(QByteArray("Accept"),
+                     QByteArray("application/json"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader,
+                  QByteArray("application/json"));
+    req.setRawHeader(QByteArray("X-Talker-Token"),
+                     m_acct->token().toAscii());
+
+    qDebug() << "sending request" << req.url();
+    foreach(QByteArray hdr, req.rawHeaderList()) {
+        qDebug() << "HEADER:" << hdr << ":" << req.rawHeader(hdr);
+    }
+
+    connect(m_net, SIGNAL(finished(QNetworkReply*)), SLOT(rooms_request_finished(QNetworkReply*)));
+    m_net->get(req);
 }
 
 MainWindow::~MainWindow() {
@@ -59,12 +107,49 @@ void MainWindow::changeEvent(QEvent *e) {
 }
 
 void MainWindow::save_settings() {
-    QSettings s("UDP Software", "TalkerApp", this);
-    s.group();
+    if (!m_settings) {
+        m_settings = new QSettings(this);
+    }
+    m_settings->beginGroup("geometry");
+    m_settings->setValue("size", size());
+    m_settings->setValue("pos", pos());
+    m_settings->endGroup();
 }
 
 void MainWindow::load_settings() {
-    QSettings s("UDP Software", "TalkerApp", this);
+    if (!m_settings) {
+        m_settings = new QSettings(this);
+    }
+    m_settings->beginGroup("geometry");
+    resize(m_settings->value("size", QSize(500, 600)).toSize());
+    move(m_settings->value("pos", QPoint(200, 200)).toPoint());
+    m_settings->endGroup();
+}
+
+int MainWindow::load_accounts() {
+    if (!m_settings) {
+        m_settings = new QSettings(this);
+    }
+    int total_accounts = m_settings->beginReadArray("accounts");
+    for (int i = 0; i < total_accounts; ++i) {
+        m_settings->setArrayIndex(i);
+        this->m_accounts.append(new TalkerAccount(*m_settings));
+    }
+    m_settings->endArray();
+    qDebug() << "loaded" << total_accounts << "accounts from settings";
+    return total_accounts;
+}
+
+void MainWindow::save_accounts() {
+    if (!m_settings) {
+        m_settings = new QSettings(this);
+    }
+    m_settings->beginWriteArray("accounts", m_accounts.size());
+    for (int i = 0; i < m_accounts.size(); ++i) {
+        m_settings->setArrayIndex(i);
+        m_accounts.at(i)->save(*m_settings);
+    }
+    m_settings->endArray();
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {
@@ -79,12 +164,46 @@ void MainWindow::set_interface_enabled(const bool &enabled) {
     ui->le_chat_entry->setEnabled(enabled);
 }
 
+void MainWindow::rooms_request_finished(QNetworkReply *r) {
+    m_net->disconnect(this, SLOT(rooms_request_finished(QNetworkReply*)));
+    QString reply(r->readAll());
+    QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
+    if (m_engine->hasUncaughtException()) {
+        qWarning() << "SCRIPT EXCEPTION" << m_engine->uncaughtException().toString();
+        QMessageBox::warning(this, tr("Communication Error!"),
+                             tr("Failed to parse response from server:\n\n%1")
+                             .arg(reply));
+        logout();
+        return;
+    }
+    qDebug() << "Evaluated response:" << val.toString();
+
+    if (val.isArray()) {
+        QMap<QString, int> rooms;
+        QScriptValueIterator it(val);
+        while(it.hasNext()) {
+            it.next();
+            QScriptValue room = it.value();
+            QString room_name = room.property("name").toString();
+            int room_id = room.property("id").toInteger();
+            rooms.insert(room_name, room_id);
+        }
+
+        m_room_to_join = QInputDialog::getItem(this, tr("Choose which room to join"),
+                                                     tr("Select a room"), rooms.keys(), 0, false);
+        qDebug() << "will join" << m_room_to_join << rooms.value(m_room_to_join);
+        login();
+    }
+
+    //[{"name": "Main", "id": 497}, {"name": "Second Room", "id": 512}]
+    r->deleteLater();
+}
+
 void MainWindow::socket_encrypted() {
-    // TODO: cut this shit out, ask for a room
     qDebug() << "socket encrypted";
-    QString body("{\"type\":\"connect\",\"room\":\"Main\","
-                 "\"token\":\"%1\"}\r\n");
-    body = body.arg(m_token);
+    QString body("{\"type\":\"connect\",\"room\":\"%1\","
+                 "\"token\":\"%2\"}\r\n");
+    body = body.arg(m_room_to_join).arg(m_acct->token());
     qDebug() << "sending" << body;
     m_ssl->write(body.toAscii());
 }
@@ -168,24 +287,12 @@ void MainWindow::socket_ready_read() {
 }
 
 void MainWindow::login() {
-    // Start sign-in form...
-    bool ok;
-    m_token = QInputDialog::getText(this,
-                                    tr("Enter Your TalkerApp User Token"),
-                                    tr("User Token:"), QLineEdit::Normal,
-                                    "39c765a90eb7debd9dc19a6498c843cb1296cbe0", &ok);
-
-    if (!ok) {
-        return;
-    }
     if (!m_ssl || !QSslSocket::supportsSsl()) {
         QMessageBox::warning(this, tr("Secure Sockets Library Not Found!"),
                              tr("This tool requires an SSL library with TLSv1 "
                                 "support. And was not found on your system"));
         return;
     }
-    qDebug() << "user gave" << m_token;
-
     // open a connection
     m_ssl->connectToHostEncrypted("talkerapp.com", 8500);
 }
@@ -215,7 +322,6 @@ void MainWindow::submit_message() {
 }
 
 void MainWindow::handle_message(const QScriptValue &val) {
-    m_msg_sound->play();
     //QDateTime timestamp = val.property("time").toDateTime();
     QString content = val.property("content").toString();
     QString sender = val.property("user").property("name").toString();
@@ -227,8 +333,13 @@ void MainWindow::handle_message(const QScriptValue &val) {
 
     ui->chat_log->scrollToBottom();
 
-    if (!this->isActiveWindow()) {
-        m_tray->showMessage(QString("New Message from %1").arg(sender), content, QSystemTrayIcon::Information, 2000);
-        m_msg_sound->play();
+    if (!isActiveWindow()) {
+        m_tray->showMessage(QString("message from %1").arg(sender), content, QSystemTrayIcon::Information, 2000);
+        //raise();
     }
+}
+
+void MainWindow::on_test() {
+    qDebug() << "test called";
+    m_tray->showMessage("test1", "test2", QSystemTrayIcon::Warning, 10000);
 }
