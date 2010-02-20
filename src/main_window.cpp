@@ -10,7 +10,9 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , m_settings(new QSettings(this))
+    , m_settings(new QSettings(QSettings::IniFormat, QSettings::UserScope,
+                QCoreApplication::organizationName(),
+                QCoreApplication::applicationName(), this))
     , m_net(new QNetworkAccessManager(this))
     , m_ssl(new QSslSocket(this))
     , m_engine(new QScriptEngine(this))
@@ -107,9 +109,6 @@ void MainWindow::changeEvent(QEvent *e) {
 }
 
 void MainWindow::save_settings() {
-    if (!m_settings) {
-        m_settings = new QSettings(this);
-    }
     m_settings->beginGroup("geometry");
     m_settings->setValue("size", size());
     m_settings->setValue("pos", pos());
@@ -117,9 +116,6 @@ void MainWindow::save_settings() {
 }
 
 void MainWindow::load_settings() {
-    if (!m_settings) {
-        m_settings = new QSettings(this);
-    }
     m_settings->beginGroup("geometry");
     resize(m_settings->value("size", QSize(500, 600)).toSize());
     move(m_settings->value("pos", QPoint(200, 200)).toPoint());
@@ -127,9 +123,6 @@ void MainWindow::load_settings() {
 }
 
 int MainWindow::load_accounts() {
-    if (!m_settings) {
-        m_settings = new QSettings(this);
-    }
     int total_accounts = m_settings->beginReadArray("accounts");
     for (int i = 0; i < total_accounts; ++i) {
         m_settings->setArrayIndex(i);
@@ -141,9 +134,6 @@ int MainWindow::load_accounts() {
 }
 
 void MainWindow::save_accounts() {
-    if (!m_settings) {
-        m_settings = new QSettings(this);
-    }
     m_settings->beginWriteArray("accounts", m_accounts.size());
     for (int i = 0; i < m_accounts.size(); ++i) {
         m_settings->setArrayIndex(i);
@@ -167,6 +157,7 @@ void MainWindow::set_interface_enabled(const bool &enabled) {
 void MainWindow::rooms_request_finished(QNetworkReply *r) {
     m_net->disconnect(this, SLOT(rooms_request_finished(QNetworkReply*)));
     QString reply(r->readAll());
+    qDebug() << "REPLY:" << r->errorString() << "SERVER SAID:" << reply;
     QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
     if (m_engine->hasUncaughtException()) {
         qWarning() << "SCRIPT EXCEPTION" << m_engine->uncaughtException().toString();
