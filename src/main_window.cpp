@@ -1,7 +1,7 @@
-#include "mainwindow.h"
-#include "ui_mainwindow.h"
-#include "ui_accounteditdialog.h"
-#include "TalkerAccount.h"
+#include "main_window.h"
+#include "ui_main_window.h"
+#include "ui_account_edit_dialog.h"
+#include "talker_account.h"
 #include <QtGui>
 #include <QtNetwork>
 #include <QtWebKit>
@@ -17,9 +17,9 @@ MainWindow::MainWindow(QWidget *parent)
     , m_token("")
     , m_timer(new QTimer(this))
     , m_status_lbl(new QLabel(this))
-    , m_acct(0)
     , m_tray_menu(new QMenu(this))
     , m_tray(new QSystemTrayIcon(this))
+    , m_acct(0)
 {
     // load up our pretty design
     ui->setupUi(this);

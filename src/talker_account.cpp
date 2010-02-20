@@ -1,4 +1,4 @@
-#include "TalkerAccount.h"
+#include "talker_account.h"
 
 TalkerAccount::TalkerAccount(const QString &token, const QString &domain)
     : m_token(token)
