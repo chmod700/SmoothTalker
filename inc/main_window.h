@@ -58,8 +58,6 @@ private:
     Ui::MainWindow *ui;
     QSettings *m_settings; // manages app settings
     QNetworkAccessManager *m_net; // handles web requests for us
-    QSslSocket *m_ssl; // TODO: we need one of these for each room :(
-    QTimer *m_timer; // used for keep-alives
     QLabel *m_status_lbl; // where status bar messages are written
     QMenu *m_tray_menu; // the context menu for right clicks on our tray icon
     QSystemTrayIcon *m_tray; // holds our handly little tray icon
@@ -73,17 +71,10 @@ private:
     private slots:
         void login();
         void logout();
-        void stay_alive();
-        void socket_encrypted();
-        void socket_ssl_errors(const QList<QSslError> &errors);
-        void socket_ready_read();
-        void socket_disconnected();
-
         void submit_message();
-        void handle_message(const QScriptValue &val);
-
         void on_test(); // silly method hooked up to the file menu for
                         // on-demand testing
+        void update_rooms(const TalkerAccount&);
 
 };
 

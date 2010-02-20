@@ -45,6 +45,7 @@ public:
     QString name() const {return m_name;}
     QString token() const {return m_token;}
     QString domain() const {return m_domain;}
+    QMap<QString, int> avail_rooms() const {return m_avail_rooms;}
 
     void set_name(const QString &name);
     void set_token(const QString &token);
@@ -64,10 +65,8 @@ public:
 
     public slots:
         // open a connection to this account on talkerapp.com
-        bool login() {return 0;}
         void logout();
         void get_available_rooms(); // send a request for the list of rooms
-        TalkerRoom* join_room(const QString &room) {return NULL;}
         bool edit();
 
 private:
@@ -77,8 +76,8 @@ private:
     QDateTime m_last_used; // last time this account logged in
     QStringList m_open_rooms; // which rooms were open on this account last
     QMap<QString, int> m_avail_rooms; // which rooms can be joined (name, id)
+    QList<TalkerRoom*> m_active_rooms; // rooms we're connected to
     QNetworkAccessManager *m_net; // used to for web requests
-    QSslSocket *m_ssl; // used for messages
     QScriptEngine *m_engine; // used to parse JSON we get from the SSL sockets
 
     void setup_network(); // make the object we need to list rooms, and chat
@@ -88,6 +87,7 @@ private:
 
 signals:
     void settings_changed(const TalkerAccount &acct);
+    void new_rooms_available(const TalkerAccount &acct);
 };
 
 #endif // TALKERACCOUNT_H

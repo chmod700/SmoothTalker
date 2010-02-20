@@ -24,16 +24,39 @@ THE SOFTWARE.
 #define TALKERROOM_H
 
 #include <QObject>
+#include <QtNetwork>
+#include <QtScript>
 
-class TalkerRoom : public QObject
-{
-Q_OBJECT
+#include "talker_account.h"
+
+class TalkerRoom : public QObject {
+    Q_OBJECT
 public:
-    explicit TalkerRoom(QObject *parent = 0);
+    TalkerRoom(TalkerAccount *acct, const QString &room_name,
+               QObject *parent = 0);
+    ~TalkerRoom() {}
+
+    // create a socket to the given room and start chatting
+    void join_room();
+
+    public slots:
+        void logout();
+        void stay_alive();
+        void socket_encrypted();
+        void socket_ssl_errors(const QList<QSslError> &errors);
+        void socket_ready_read();
+        void socket_disconnected();
+
+        void handle_message(const QScriptValue &val);
+
+private:
+    TalkerAccount *m_acct; // the account that has access to this room
+    QString m_name; // the name of the room
+    QSslSocket *m_ssl; // used for messages
+    QScriptEngine *m_engine; // used to parse JSON we get from the SSL sockets
+    QTimer *m_timer; // used for keep-alives
 
 signals:
-
-public slots:
 
 };
 

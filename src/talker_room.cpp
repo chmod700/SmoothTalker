@@ -20,9 +20,155 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
+#include <QtNetwork>
+#include <QtScript>
+
 #include "talker_room.h"
 
-TalkerRoom::TalkerRoom(QObject *parent) :
-    QObject(parent)
+TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
+                       QObject *parent)
+    : QObject(parent)
+    , m_acct(acct)
+    , m_name(room_name)
+    , m_ssl(new QSslSocket(this))
+    , m_engine(new QScriptEngine(this))
+    , m_timer(new QTimer(this))
 {
+    QSslConfiguration config = m_ssl->sslConfiguration();
+    config.setProtocol(QSsl::TlsV1);
+    m_ssl->setSslConfiguration(config);
+
+    connect(m_ssl, SIGNAL(encrypted()), SLOT(socket_encrypted()));
+    connect(m_ssl, SIGNAL(sslErrors(QList<QSslError>)),
+            SLOT(socket_ssl_errors(QList<QSslError>)));
+    connect(m_ssl, SIGNAL(readyRead()), SLOT(socket_ready_read()));
+    connect(m_ssl, SIGNAL(disconnected()), SLOT(socket_disconnected()));
+    connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
+}
+
+void TalkerRoom::join_room() {
+    // open a connection
+    m_ssl->connectToHostEncrypted("talkerapp.com", 8500);
+}
+
+void TalkerRoom::logout() {
+    qDebug() << m_name << "logging out";
+    if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
+        m_ssl->write("{\"type\":\"close\"}\r\n");
+    }
+    m_ssl->close();
+}
+
+void TalkerRoom::socket_encrypted() {
+    // connection has been made successfully
+    qDebug() << "socket encrypted";
+    QString body("{\"type\":\"connect\",\"room\":\"%1\","
+                 "\"token\":\"%2\"}\r\n");
+    body = body.arg(m_name).arg(m_acct->token());
+    qDebug() << "sending" << body;
+    m_ssl->write(body.toAscii());
+}
+
+void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
+    qWarning() << "SSL ERROR:" << errors;
+}
+
+void TalkerRoom::socket_disconnected() {
+    /*
+    set_interface_enabled(false);
+    m_status_lbl->setText(tr("Not Connected"));
+    m_timer->stop();
+    */
+}
+
+void TalkerRoom::socket_ready_read() {
+    qDebug() << "socket is ready to read";
+
+    // get the server's reply
+    QString reply = QString(m_ssl->readAll()).trimmed();
+    qDebug() << QString("server said: (%1)").arg(reply);
+
+
+    QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
+    if (m_engine->hasUncaughtException()) {
+        qWarning() << "SCRIPT EXCEPTION" << m_engine->uncaughtException().toString();
+        QMessageBox::warning(NULL, tr("Communication Error!"),
+                             tr("Failed to parse response from server:\n\n%1")
+                             .arg(reply));
+        logout();
+        return;
+    }
+    qDebug() << "Evaluated response:" << val.toString();
+
+    QString response_type = val.property("type").toString();
+    qDebug() << "RESPONSE DISPATCH:" << response_type;
+    if (response_type == "connected") {
+        QString user = val.property("user").property("name").toString();
+        qDebug() << "user is:" << user;
+
+        // m_status_lbl->setText(tr("Connected as %1").arg(user));
+
+        // set_interface_enabled(true);
+        m_timer->setInterval(20000);
+        m_timer->start();
+        //ui->le_chat_entry->setFocus();
+    } else if (response_type == "users") {
+        // ui->tbl_users->clearContents();
+        // ui->tbl_users->setRowCount(val.property("users").property("length").toInteger());
+        QScriptValue users_obj = val.property("users");
+        if (users_obj.isArray()) {
+            QScriptValueIterator it(users_obj);
+            int i = 0;
+            while(it.hasNext()) {
+                it.next();
+                QScriptValue user = it.value();
+                QString user_name = user.property("name").toString();
+                QString user_email= user.property("email").toString();
+                qDebug() << "user in room" << user_name << "email" << user_email;
+                QTableWidgetItem *name_item = new QTableWidgetItem(user_name);
+                //QTableWidgetItem *email_item = new QTableWidgetItem(user_email);
+                QTableWidgetItem *email_item = new QTableWidgetItem("user@email.com");
+                // ui->tbl_users->setItem(i, 0, name_item);
+                // ui->tbl_users->setItem(i, 1, email_item);
+                i++;
+            }
+        }
+
+    } else if (response_type == "error") {
+        QString msg = val.property("message").toString();
+        qWarning() << "SERVER SENT ERROR:" << msg;
+        QMessageBox::warning(NULL, tr("Server Error!"),
+                             tr("Server sent the following error:\n\n%1")
+                             .arg(msg));
+    } else if (response_type == "message") {
+        handle_message(val);
+    }
+}
+
+void TalkerRoom::stay_alive() {
+    qDebug() << "pinging...";
+    if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
+        m_ssl->write("{\"type\":\"ping\"}\r\n");
+    }
+}
+
+void TalkerRoom::handle_message(const QScriptValue &val) {
+    QDateTime timestamp = val.property("time").toDateTime();
+    QString content = val.property("content").toString();
+    QString sender = val.property("user").property("name").toString();
+
+    qDebug() << "got message from:" << sender << "MSG:" << content;
+    /*
+    QTreeWidgetItem *entry = new QTreeWidgetItem(ui->chat_log);
+    entry->setText(0, sender);
+    entry->setText(1, content);
+    //entry->setText(1, QString("TIME:[%1]\n%2").arg(timestamp.toLocalTime().toString("MMM d h:m:s ap")).arg(content));
+
+    ui->chat_log->scrollToBottom();
+
+    if (!isActiveWindow()) {
+        m_tray->showMessage(QString("message from %1").arg(sender), content, QSystemTrayIcon::Information, 2000);
+        //raise();
+    }
+    */
 }

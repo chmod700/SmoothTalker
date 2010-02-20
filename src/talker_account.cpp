@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include <QtScript>
 
 #include "talker_account.h"
+#include "talker_room.h"
 #include "ui_account_edit_dialog.h"
 
 TalkerAccount::TalkerAccount(const QString &name, const QString &token,
@@ -35,12 +36,10 @@ TalkerAccount::TalkerAccount(const QString &name, const QString &token,
     , m_last_used(QDateTime::currentDateTime())
     , m_open_rooms(QStringList())
     , m_avail_rooms(QMap<QString, int>())
+    , m_active_rooms(QList<TalkerRoom*>())
     , m_net(new QNetworkAccessManager(this))
-    , m_ssl(new QSslSocket(this))
     , m_engine(new QScriptEngine(this))
-{
-    qDebug() << "Account ctor:" << token << domain;
-}
+{}
 
 TalkerAccount::~TalkerAccount() {}
 
@@ -76,11 +75,10 @@ void TalkerAccount::save(QSettings &s) {
 }
 
 void TalkerAccount::logout() {
-    qDebug() << to_str() << "logging out";
-    if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
-        m_ssl->write("{\"type\":\"close\"}\r\n");
+    foreach(TalkerRoom *r, m_active_rooms) {
+        if (r)
+            r->logout();
     }
-    m_ssl->close();
 }
 
 void TalkerAccount::get_available_rooms() {
@@ -105,16 +103,18 @@ void TalkerAccount::get_available_rooms() {
 void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
     m_net->disconnect(this, SLOT(rooms_request_finished(QNetworkReply*)));
     QString reply(r->readAll());
+    // looks something like this...
+    // [{"name": "Main", "id": 497}, {"name": "Second Room", "id": 512}]
 
     qDebug() << "SERVER SAID:" << reply;
     if (r->error() == QNetworkReply::NoError) { // YAY!
         QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
         if (m_engine->hasUncaughtException()) {
-            qWarning() << "SCRIPT EXCEPTION" << m_engine->uncaughtException().toString();
-            QMessageBox::warning(NULL, tr("Communication Error!"),
-                                 tr("Failed to parse response from server:\n\n%1")
-                                 .arg(reply));
-            logout();
+            qWarning() << "SCRIPT EXCEPTION"
+                    << m_engine->uncaughtException().toString();
+            QMessageBox::warning(
+                NULL, tr("Communication Error!"),
+                tr("Failed to parse response from server:\n\n%1").arg(reply));
             return;
         }
         qDebug() << "Evaluated response:" << val.toString();
@@ -130,10 +130,15 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
                 m_avail_rooms.insert(room_name, room_id);
             }
 
-            /*m_room_to_join = QInputDialog::getItem(this, tr("Choose which room to join"),
-                                                         tr("Select a room"), rooms.keys(), 0, false);
-            qDebug() << "will join" << m_room_to_join << rooms.value(m_room_to_join);
-            login();*/
+            if (m_open_rooms.size() < 1) { // never opened any rooms here?
+                QString to_join = QInputDialog::getItem(
+                        NULL, tr("Choose which room to join"),
+                        tr("Select a room"), m_avail_rooms.keys(), 0, false);
+                if (!to_join.isEmpty()) {
+                    open_room(to_join);
+                }
+            }
+            emit new_rooms_available(*this);
         } else if (val.isObject() && response_type == "error") {
             QString msg = val.property("message").toString();
             qWarning() << "SERVER SENT ERROR:" << msg;
@@ -158,10 +163,19 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
         }
     } else {
         qWarning() << "ROOM REQUEST ERROR:" << r->errorString() << r->error();
+        QMessageBox::warning(
+                NULL, tr("Server Error!"),
+                tr("There was an error retreiving the room list:\n\n%1")
+                .arg(r->errorString())
+        );
     }
-
-    //[{"name": "Main", "id": 497}, {"name": "Second Room", "id": 512}]
     r->deleteLater();
+}
+
+void TalkerAccount::open_room(const QString &room_name) {
+    TalkerRoom *room = new TalkerRoom(this, room_name, this);
+    m_active_rooms.append(room);
+    room->join_room();
 }
 
 TalkerAccount* TalkerAccount::create_new(QObject *account_owner,
