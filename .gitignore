@@ -1,0 +1,12 @@
+# most of the crap in bin
+bin/debug/*
+bin/release/*
+bin/temp/*
+
+# icons not explicity added
+resources/img/icons/*
+
+# makefiles
+Makefile
+Makefile.Debug
+Makefile.Release
