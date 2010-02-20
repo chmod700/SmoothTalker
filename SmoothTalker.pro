@@ -2,11 +2,7 @@
 # Project created by QtCreator 2010-01-08T11:21:09
 # -------------------------------------------------
 # QT libs we need
-QT += network \
-    script \
-    webkit \
-    xml \
-    multimedia
+QT += network script
 
 # basic app config
 TARGET = SmoothTalker

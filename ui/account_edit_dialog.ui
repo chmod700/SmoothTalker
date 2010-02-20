@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>184</height>
+    <width>458</width>
+    <height>196</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -26,6 +26,26 @@
       <bool>true</bool>
      </property>
     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_3">
+     <item>
+      <widget class="QLabel" name="label_5">
+       <property name="toolTip">
+        <string>This is just a simple name to remind you what account this is. For example &quot;project foo&quot; or &quot;friends&quot;. </string>
+       </property>
+       <property name="text">
+        <string>Name This Account:</string>
+       </property>
+       <property name="buddy">
+        <cstring>le_name</cstring>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="le_name"/>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QGroupBox" name="groupBox">
@@ -110,6 +130,7 @@
   </layout>
  </widget>
  <tabstops>
+  <tabstop>le_name</tabstop>
   <tabstop>le_token</tabstop>
   <tabstop>le_domain</tabstop>
   <tabstop>buttonBox</tabstop>

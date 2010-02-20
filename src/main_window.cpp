@@ -26,8 +26,6 @@ THE SOFTWARE.
 #include "talker_account.h"
 #include <QtGui>
 #include <QtNetwork>
-#include <QtWebKit>
-#include <QScriptValueIterator>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -37,19 +35,25 @@ MainWindow::MainWindow(QWidget *parent)
                 QCoreApplication::applicationName(), this))
     , m_net(new QNetworkAccessManager(this))
     , m_ssl(new QSslSocket(this))
-    , m_engine(new QScriptEngine(this))
-    , m_token("")
     , m_timer(new QTimer(this))
     , m_status_lbl(new QLabel(this))
     , m_tray_menu(new QMenu(this))
     , m_tray(new QSystemTrayIcon(this))
-    , m_acct(0)
 {
     // load up our pretty design
     ui->setupUi(this);
 
     // turn off the toolbar
     ui->toolBar->hide();
+
+    // make sure we have SSL access, or the whole app is worthless
+    if (!QSslSocket::supportsSsl()) {
+        QMessageBox::warning(this, tr("Secure Sockets Library Not Found!"),
+                             tr("This tool requires an SSL library with TLSv1 "
+                                "support. And one was not found on your system")
+                             );
+        close();
+    }
 
     connect(m_ssl, SIGNAL(encrypted()), this, SLOT(socket_encrypted()));
     connect(m_ssl, SIGNAL(sslErrors(QList<QSslError>)), this,
@@ -66,53 +70,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_status_lbl->setText(tr("Not Connected"));
 
     //setup system tray icon
-    m_tray_menu->addAction(QIcon(":img/icons/door_out.png"), tr("E&xit"), this, SLOT(close()));
+    m_tray_menu->addAction(QIcon(":img/icons/door_out.png"), tr("E&xit"),
+                           this, SLOT(close()));
     m_tray->setContextMenu(m_tray_menu);
     m_tray->setIcon(QIcon(":img/icons/transmit.png"));
-    m_tray->setToolTip("SmoothTalker");
+    m_tray->setToolTip(QCoreApplication::applicationName());
     m_tray->show();
 
     load_settings();
-
-    if (load_accounts() < 1) { // no configured accounts, launch the dialog
-        QDialog *d = new QDialog(this);
-        Ui::AccountEditDialog *dui = new Ui::AccountEditDialog;
-        dui->setupUi(d);
-        while (!d->exec()) {
-            if  (QMessageBox::question(this, tr("Do this later?"),
-                              tr("Do you want to enter your account information later?"),
-                              QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes) {
-                qDebug() << "user cancelled";
-                break;
-            }
-        }
-        TalkerAccount *acct = new TalkerAccount(dui->le_token->text(), dui->le_domain->text());
-        m_accounts.push_back(acct);
-        m_acct = acct;
-        save_accounts();
-        delete dui;
-        d->deleteLater();
-    }
-    m_acct = m_accounts.at(0);
-    qDebug() << "first account" << m_acct->token() << "domain:" << m_acct->domain();
-
-    // get rooms...
-    QUrl url(QString("https://%1.talkerapp.com/rooms.json").arg(m_acct->domain()));
-    QNetworkRequest req(url);
-    req.setRawHeader(QByteArray("Accept"),
-                     QByteArray("application/json"));
-    req.setHeader(QNetworkRequest::ContentTypeHeader,
-                  QByteArray("application/json"));
-    req.setRawHeader(QByteArray("X-Talker-Token"),
-                     m_acct->token().toAscii());
-
-    qDebug() << "sending request" << req.url();
-    foreach(QByteArray hdr, req.rawHeaderList()) {
-        qDebug() << "HEADER:" << hdr << ":" << req.rawHeader(hdr);
-    }
-
-    connect(m_net, SIGNAL(finished(QNetworkReply*)), SLOT(rooms_request_finished(QNetworkReply*)));
-    m_net->get(req);
+    load_accounts();
+    login();
 }
 
 MainWindow::~MainWindow() {
@@ -135,6 +102,7 @@ void MainWindow::save_settings() {
     m_settings->setValue("size", size());
     m_settings->setValue("pos", pos());
     m_settings->endGroup();
+    save_accounts();
 }
 
 void MainWindow::load_settings() {
@@ -148,7 +116,9 @@ int MainWindow::load_accounts() {
     int total_accounts = m_settings->beginReadArray("accounts");
     for (int i = 0; i < total_accounts; ++i) {
         m_settings->setArrayIndex(i);
-        this->m_accounts.append(new TalkerAccount(*m_settings));
+        TalkerAccount *a = new TalkerAccount("", "", "", this);
+        a->load_settings(*m_settings);
+        this->m_accounts.append(a);
     }
     m_settings->endArray();
     qDebug() << "loaded" << total_accounts << "accounts from settings";
@@ -166,6 +136,7 @@ void MainWindow::save_accounts() {
 
 void MainWindow::closeEvent(QCloseEvent *e) {
     qDebug() << "window closing...";
+    save_settings();
     logout();
 }
 
@@ -176,49 +147,15 @@ void MainWindow::set_interface_enabled(const bool &enabled) {
     ui->le_chat_entry->setEnabled(enabled);
 }
 
-void MainWindow::rooms_request_finished(QNetworkReply *r) {
-    m_net->disconnect(this, SLOT(rooms_request_finished(QNetworkReply*)));
-    QString reply(r->readAll());
-    qDebug() << "REPLY:" << r->errorString() << "SERVER SAID:" << reply;
-    QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
-    if (m_engine->hasUncaughtException()) {
-        qWarning() << "SCRIPT EXCEPTION" << m_engine->uncaughtException().toString();
-        QMessageBox::warning(this, tr("Communication Error!"),
-                             tr("Failed to parse response from server:\n\n%1")
-                             .arg(reply));
-        logout();
-        return;
-    }
-    qDebug() << "Evaluated response:" << val.toString();
-
-    if (val.isArray()) {
-        QMap<QString, int> rooms;
-        QScriptValueIterator it(val);
-        while(it.hasNext()) {
-            it.next();
-            QScriptValue room = it.value();
-            QString room_name = room.property("name").toString();
-            int room_id = room.property("id").toInteger();
-            rooms.insert(room_name, room_id);
-        }
-
-        m_room_to_join = QInputDialog::getItem(this, tr("Choose which room to join"),
-                                                     tr("Select a room"), rooms.keys(), 0, false);
-        qDebug() << "will join" << m_room_to_join << rooms.value(m_room_to_join);
-        login();
-    }
-
-    //[{"name": "Main", "id": 497}, {"name": "Second Room", "id": 512}]
-    r->deleteLater();
-}
-
 void MainWindow::socket_encrypted() {
+    /*
     qDebug() << "socket encrypted";
     QString body("{\"type\":\"connect\",\"room\":\"%1\","
                  "\"token\":\"%2\"}\r\n");
     body = body.arg(m_room_to_join).arg(m_acct->token());
     qDebug() << "sending" << body;
     m_ssl->write(body.toAscii());
+    */
 }
 
 void MainWindow::socket_ssl_errors(const QList<QSslError> &errors) {
@@ -226,12 +163,15 @@ void MainWindow::socket_ssl_errors(const QList<QSslError> &errors) {
 }
 
 void MainWindow::socket_disconnected() {
+    /*
     set_interface_enabled(false);
     m_status_lbl->setText(tr("Not Connected"));
     m_timer->stop();
+    */
 }
 
 void MainWindow::socket_ready_read() {
+    /*
     qDebug() << "socket is ready to read";
 
     // get the server's reply
@@ -261,11 +201,6 @@ void MainWindow::socket_ready_read() {
         m_timer->setInterval(20000);
         m_timer->start();
         ui->le_chat_entry->setFocus();
-
-        /*QWebView *web = new QWebView(this);
-        web->load(QUrl("http://udp.talkerapp.com/rooms/497"));
-        web->show();
-        ui->tabs_main->addTab(web, "Web Version");*/
     } else if (response_type == "users") {
         ui->tbl_users->clearContents();
         ui->tbl_users->setRowCount(val.property("users").property("length").toInteger());
@@ -297,25 +232,45 @@ void MainWindow::socket_ready_read() {
     } else if (response_type == "message") {
         handle_message(val);
     }
+    */
 }
 
 void MainWindow::login() {
-    if (!m_ssl || !QSslSocket::supportsSsl()) {
-        QMessageBox::warning(this, tr("Secure Sockets Library Not Found!"),
-                             tr("This tool requires an SSL library with TLSv1 "
-                                "support. And was not found on your system"));
-        return;
+    // show a list of configured accounts, and allow multiple selection for
+    // which ones to login to (ONLY IF THERE IS MORE THAN 1 ACCOUNT CONFIGURED)
+    int total_accounts = m_accounts.length();
+    if (total_accounts < 1) {
+        if (QMessageBox::question(
+                this, tr("No Account Configured"),
+                tr("You have not yet configured an account, would you like to "
+                   "do so now?"), QMessageBox::Yes, QMessageBox::No
+                ) == QMessageBox::Yes) {
+
+            // they want to make a new account, open the dialog
+            TalkerAccount *acct = TalkerAccount::create_new(this, this);
+            if (acct) { // they accepted the dialog
+                m_accounts.append(acct); // hold on to it for this session
+                save_accounts(); // write it to disk
+                login(); // try again but this time we should have an account
+            }
+        }
+    } else if (total_accounts == 1) {
+        // get a room list for this dude...
+        m_accounts.at(0)->get_available_rooms();
+    } else {
+        // show a list of all accounts and let them login to any of them
     }
+
     // open a connection
-    m_ssl->connectToHostEncrypted("talkerapp.com", 8500);
+    //m_ssl->connectToHostEncrypted("talkerapp.com", 8500);
 }
 
 void MainWindow::logout() {
-    qDebug() << "logging out...";
-    if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
-        m_ssl->write("{\"type\":\"close\"}\r\n");
+    qDebug() << "logging out of all accounts...";
+    foreach(TalkerAccount *a, m_accounts) {
+        if (a)
+            a->logout();
     }
-    m_ssl->close();
 }
 
 void MainWindow::stay_alive() {

@@ -30,19 +30,25 @@ THE SOFTWARE.
 namespace Ui {
     class MainWindow;
 }
+// forward declarations
 class TalkerAccount;
 
+/**
+  * The core of the whole app. Handles choosing accounts, and showing of the
+  * main GUI window
+  */
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow(QWidget *parent = 0);
     ~MainWindow();
+
     void save_settings();
     void load_settings();
 
-public slots:
-    void save_accounts();
-    int load_accounts();
+    public slots:
+        void save_accounts();
+        int load_accounts();
 
 protected:
     void changeEvent(QEvent *e);
@@ -50,36 +56,34 @@ protected:
 
 private:
     Ui::MainWindow *ui;
-    QSettings *m_settings;
-    QNetworkAccessManager *m_net;
-    QSslSocket *m_ssl;
-    QScriptEngine *m_engine;
-    QString m_token;
-    QTimer *m_timer;
-    QLabel *m_status_lbl;
-    QString m_room_to_join;
-    QMenu *m_tray_menu;
-    QSystemTrayIcon *m_tray;
+    QSettings *m_settings; // manages app settings
+    QNetworkAccessManager *m_net; // handles web requests for us
+    QSslSocket *m_ssl; // TODO: we need one of these for each room :(
+    QTimer *m_timer; // used for keep-alives
+    QLabel *m_status_lbl; // where status bar messages are written
+    QMenu *m_tray_menu; // the context menu for right clicks on our tray icon
+    QSystemTrayIcon *m_tray; // holds our handly little tray icon
 
-    QList<TalkerAccount*> m_accounts;
-    TalkerAccount *m_acct;
+    QList<TalkerAccount*> m_accounts; // list of configured accounts
+    //TalkerAccount *m_acct; // current account TODO: allow multiple at once
 
+    // single method to enable/disable GUI elements
     void set_interface_enabled(const bool &enabled);
 
-private slots:
-    void login();
-    void logout();
-    void stay_alive();
-    void socket_encrypted();
-    void socket_ssl_errors(const QList<QSslError> &errors);
-    void socket_ready_read();
-    void socket_disconnected();
+    private slots:
+        void login();
+        void logout();
+        void stay_alive();
+        void socket_encrypted();
+        void socket_ssl_errors(const QList<QSslError> &errors);
+        void socket_ready_read();
+        void socket_disconnected();
 
-    void submit_message();
-    void handle_message(const QScriptValue &val);
+        void submit_message();
+        void handle_message(const QScriptValue &val);
 
-    void rooms_request_finished(QNetworkReply*);
-    void on_test();
+        void on_test(); // silly method hooked up to the file menu for
+                        // on-demand testing
 
 };
 

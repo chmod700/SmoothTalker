@@ -24,28 +24,67 @@ THE SOFTWARE.
 #define TALKERACCOUNT_H
 
 #include <QtGui>
+#include <QtNetwork>
+#include <QtScript>
+// forward declarations
+
+class TalkerRoom;
 
 class TalkerAccount : public QObject {
     Q_OBJECT
 public:
-    TalkerAccount(const QString &token, const QString &domain);
-    TalkerAccount(QSettings &s);
+    TalkerAccount(const QString &name, const QString &token,
+                  const QString &domain, QObject *parent);
+
     ~TalkerAccount();
 
+    void load_settings(QSettings &s);
+    QString to_str() const {
+        return QString("<ACCT: %1 %2.talkerapp.com>").arg(m_name).arg(m_domain);
+    }
+    QString name() const {return m_name;}
     QString token() const {return m_token;}
     QString domain() const {return m_domain;}
 
+    void set_name(const QString &name);
     void set_token(const QString &token);
     void set_domain(const QString &domain);
     void open_room(const QString &room_name);
     void close_room(const QString &room_name);
     void save(QSettings &s);
 
+    /**
+      * Static method that shows a configuration dialog for a user-account token
+      * as well as the talkerapp.com subdomain the user wants to connect to.
+      * After the dialog is accepted the new account object is created on the
+      * heap and passed back to the caller.
+      */
+    static TalkerAccount* create_new(QObject *account_owner,
+                                     QWidget *dialog_parent=0);
+
+    public slots:
+        // open a connection to this account on talkerapp.com
+        bool login() {return 0;}
+        void logout();
+        void get_available_rooms(); // send a request for the list of rooms
+        TalkerRoom* join_room(const QString &room) {return NULL;}
+        bool edit();
+
 private:
-    QString m_token;
-    QString m_domain;
-    QStringList m_open_rooms;
-    QDateTime m_last_used;
+    QString m_name; // string used to identify this account
+    QString m_token; // api token (32char hex)
+    QString m_domain; // the first part of XXX.talkerapp.com
+    QDateTime m_last_used; // last time this account logged in
+    QStringList m_open_rooms; // which rooms were open on this account last
+    QMap<QString, int> m_avail_rooms; // which rooms can be joined (name, id)
+    QNetworkAccessManager *m_net; // used to for web requests
+    QSslSocket *m_ssl; // used for messages
+    QScriptEngine *m_engine; // used to parse JSON we get from the SSL sockets
+
+    void setup_network(); // make the object we need to list rooms, and chat
+
+    private slots:
+        void rooms_request_finished(QNetworkReply *r);
 
 signals:
     void settings_changed(const TalkerAccount &acct);
