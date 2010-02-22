@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef TALKERROOM_H
 #define TALKERROOM_H
 
-#include <QObject>
+#include <QtGui>
 #include <QtNetwork>
 #include <QtScript>
 
@@ -32,12 +32,15 @@ THE SOFTWARE.
 class TalkerRoom : public QObject {
     Q_OBJECT
 public:
-    TalkerRoom(TalkerAccount *acct, const QString &room_name,
+    TalkerRoom(TalkerAccount *acct, const QString &room_name, const int id,
                QObject *parent = 0);
     ~TalkerRoom() {}
 
+    int id() const {return m_id;}
+    QString name() const {return m_name;}
     // create a socket to the given room and start chatting
-    void join_room();
+    void join_room() const;
+    QWidget *get_widget() const {return m_chat;}
 
     public slots:
         void logout();
@@ -50,14 +53,18 @@ public:
         void handle_message(const QScriptValue &val);
 
 private:
+    int m_id; // id of the room
     TalkerAccount *m_acct; // the account that has access to this room
     QString m_name; // the name of the room
     QSslSocket *m_ssl; // used for messages
     QScriptEngine *m_engine; // used to parse JSON we get from the SSL sockets
     QTimer *m_timer; // used for keep-alives
+    QTableView *m_chat; // shows messages
+    QStandardItemModel *m_model; // stores messages
 
 signals:
-
+    void connected(const TalkerRoom *room);
+    void disconnected(const TalkerRoom *room);
 };
 
 #endif // TALKERROOM_H

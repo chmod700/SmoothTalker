@@ -50,8 +50,8 @@ public:
     void set_name(const QString &name);
     void set_token(const QString &token);
     void set_domain(const QString &domain);
-    void open_room(const QString &room_name);
-    void close_room(const QString &room_name);
+    void open_room(const int room_id);
+    void close_room(const int room_id);
     void save(QSettings &s);
 
     /**
@@ -74,7 +74,8 @@ private:
     QString m_token; // api token (32char hex)
     QString m_domain; // the first part of XXX.talkerapp.com
     QDateTime m_last_used; // last time this account logged in
-    QStringList m_open_rooms; // which rooms were open on this account last
+    QMap<QString, QVariant> m_open_rooms; // which rooms (ids) were open on this
+                                          // account last
     QMap<QString, int> m_avail_rooms; // which rooms can be joined (name, id)
     QList<TalkerRoom*> m_active_rooms; // rooms we're connected to
     QNetworkAccessManager *m_net; // used to for web requests
@@ -84,10 +85,14 @@ private:
 
     private slots:
         void rooms_request_finished(QNetworkReply *r);
+        void on_room_connected(const TalkerRoom *room);
+        void on_room_disconnected(TalkerRoom *room);
 
 signals:
     void settings_changed(const TalkerAccount &acct);
     void new_rooms_available(const TalkerAccount &acct);
+    void room_connected(const TalkerRoom *room);
+    void room_disconnected(const TalkerRoom *room);
 };
 
 #endif // TALKERACCOUNT_H

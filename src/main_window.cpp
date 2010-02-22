@@ -21,9 +21,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 #include "main_window.h"
+#include "custom_tab_widget.h"
 #include "ui_main_window.h"
 #include "ui_account_edit_dialog.h"
 #include "talker_account.h"
+#include "talker_room.h"
 #include <QtGui>
 #include <QtNetwork>
 
@@ -36,9 +38,15 @@ MainWindow::MainWindow(QWidget *parent)
     , m_status_lbl(new QLabel(this))
     , m_tray_menu(new QMenu(this))
     , m_tray(new QSystemTrayIcon(this))
+    , m_connected_accounts(0)
+    , m_tabs(new CustomTabWidget(this))
+    , m_tab_bar(new QTabBar(this))
 {
     // load up our pretty design
     ui->setupUi(this);
+
+    // give the mainwindow a unique name so other classes can find it
+    this->setObjectName("MAINWINDOW");
 
     // turn off the toolbar
     ui->toolBar->hide();
@@ -51,6 +59,14 @@ MainWindow::MainWindow(QWidget *parent)
                              );
         close();
     }
+
+    // put the tab widget into the main layout and hide it until we connect
+    m_tabs->setVisible(false);
+    m_tabs->setTabBar(m_tab_bar);
+    m_tabs->setTabsClosable(true);
+    m_tabs->setTabPosition(QTabWidget::South);
+    connect(m_tabs, SIGNAL(tabCloseRequested(int)), SLOT(on_tab_close(int)));
+    ui->vbox_main->insertWidget(1, m_tabs, 10);
 
     statusBar()->addPermanentWidget(m_status_lbl, 1);
     m_status_lbl->setText(tr("Not Connected"));
@@ -133,16 +149,51 @@ void MainWindow::set_interface_enabled(const bool &enabled) {
     ui->action_logout->setEnabled(enabled);
     ui->btn_chat_submit->setEnabled(enabled);
     ui->le_chat_entry->setEnabled(enabled);
+    ui->cb_rooms->setEnabled(enabled);
+    ui->btn_join_room->setEnabled(enabled);
+    m_tabs->setVisible(enabled);
+    ui->lbl_not_connected->setVisible(!enabled);
 }
 
 void MainWindow::update_rooms(const TalkerAccount &acct) {
+    // TODO remove rooms when an account goes away...
     qDebug() << "HEY NEW ROOMS FOR" << acct.name();
     foreach (QString name, acct.avail_rooms().keys()) {
         qDebug() << "ROOM:" << name;
         ui->cb_rooms->addItem(QString("%1::%2").arg(acct.name()).arg(name),
-                              name);
+                              acct.avail_rooms()[name]);
     }
 
+}
+
+void MainWindow::join_room() {
+    int room_id = ui->cb_rooms->itemData(ui->cb_rooms->currentIndex()).toInt();
+    foreach(TalkerAccount *a, this->m_accounts) {
+        QMap<QString, int> rooms = a->avail_rooms();
+        foreach(QString name, rooms.keys()) {
+            int id = rooms[name];
+            if (id == room_id) {
+                // are we already connected to this room?
+                bool open_already = false;
+                for(int i = 0; i < m_tabs->count(); ++i) {
+                    if (m_tab_bar->tabData(i).toInt() == id) {
+                        open_already = true;
+                        break;
+                    }
+                }
+                if (!open_already)
+                    a->open_room(id);
+            }
+        }
+    }
+}
+
+void MainWindow::on_tab_close(int tab_idx) {
+    qDebug() << "request to close tab index:" << tab_idx;
+    int room_id = m_tab_bar->tabData(tab_idx).toInt();
+    foreach(TalkerAccount *a, m_accounts) {
+        a->close_room(room_id);
+    }
 }
 
 void MainWindow::login() {
@@ -167,6 +218,10 @@ void MainWindow::login() {
     } else if (total_accounts == 1) {
         // get a room list for this dude...
         m_accounts.at(0)->get_available_rooms();
+        connect(m_accounts.at(0), SIGNAL(room_connected(const TalkerRoom*)),
+                SLOT(on_room_connected(const TalkerRoom*)));
+        connect(m_accounts.at(0), SIGNAL(room_disconnected(const TalkerRoom*)),
+                SLOT(on_room_disconnected(const TalkerRoom*)));
     } else {
         // show a list of all accounts and let them login to any of them
     }
@@ -196,4 +251,29 @@ void MainWindow::submit_message() {
 void MainWindow::on_test() {
     qDebug() << "test called";
     m_tray->showMessage("test1", "test2", QSystemTrayIcon::Warning, 10000);
+}
+
+void MainWindow::on_room_connected(const TalkerRoom *room) {
+    m_connected_accounts++;
+
+    // draw a tab for this dude.
+    QWidget *w = room->get_widget();
+    m_tabs->addTab(w, room->name());
+    m_tab_bar->setTabData(m_tabs->indexOf(w), room->id());
+    set_interface_enabled(m_connected_accounts);
+}
+
+void MainWindow::on_room_disconnected(const TalkerRoom *room) {
+    qDebug() << "room disconnected" << room << "removing tab";
+    m_connected_accounts--;
+
+    // hide any tabs, and show the label
+    for(int i = 0; i < m_tab_bar->count(); ++i) {
+        if (m_tab_bar->tabData(i).toInt() == i) {
+            // TODO: nuke widget
+            m_tabs->removeTab(i);
+        }
+    }
+
+    set_interface_enabled(m_connected_accounts);
 }

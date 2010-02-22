@@ -2,17 +2,14 @@
 # Project created by QtCreator 2010-01-08T11:21:09
 # -------------------------------------------------
 # QT libs we need
-QT += network script
+QT += network \
+    script
 
 # basic app config
 TARGET = SmoothTalker
 TEMPLATE = app
-debug {
-    DESTDIR = bin/debug
-}
-release {
-    DESTDIR = bin/release
-}
+debug:DESTDIR = bin/debug
+release:DESTDIR = bin/release
 
 # where to put all the temporary crap
 OBJECTS_DIR = bin/temp
@@ -34,8 +31,8 @@ SOURCES += main.cpp \
     talker_room.cpp
 HEADERS += main_window.h \
     talker_account.h \
-    talker_room.h
+    talker_room.h \
+    inc/custom_tab_widget.h
 FORMS += main_window.ui \
     account_edit_dialog.ui
 RESOURCES += icons.qrc
-

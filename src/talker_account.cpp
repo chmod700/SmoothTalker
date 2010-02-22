@@ -34,7 +34,7 @@ TalkerAccount::TalkerAccount(const QString &name, const QString &token,
     , m_token(token)
     , m_domain(domain)
     , m_last_used(QDateTime::currentDateTime())
-    , m_open_rooms(QStringList())
+    , m_open_rooms(QMap<QString, QVariant>())
     , m_avail_rooms(QMap<QString, int>())
     , m_active_rooms(QList<TalkerRoom*>())
     , m_net(new QNetworkAccessManager(this))
@@ -48,7 +48,7 @@ void TalkerAccount::load_settings(QSettings &s) {
     m_token = s.value("token").toString();
     m_domain = s.value("domain").toString();
     m_last_used = s.value("last_used").toDateTime();
-    m_open_rooms = s.value("open_rooms").toStringList();
+    m_open_rooms = s.value("open_rooms").toMap();
 }
 
 void TalkerAccount::set_name(const QString &name) {
@@ -135,7 +135,7 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
                         NULL, tr("Choose which room to join"),
                         tr("Select a room"), m_avail_rooms.keys(), 0, false);
                 if (!to_join.isEmpty()) {
-                    open_room(to_join);
+                    open_room(m_avail_rooms[to_join]);
                 }
             }
             emit new_rooms_available(*this);
@@ -172,10 +172,38 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
     r->deleteLater();
 }
 
-void TalkerAccount::open_room(const QString &room_name) {
-    TalkerRoom *room = new TalkerRoom(this, room_name, this);
-    m_active_rooms.append(room);
-    room->join_room();
+void TalkerAccount::open_room(const int room_id) {
+    foreach(QString name, this->m_avail_rooms.keys()) {
+        int id = m_avail_rooms[name];
+        if (id == room_id) {
+            TalkerRoom *room = new TalkerRoom(this, name, id, this);
+            connect(room, SIGNAL(connected(const TalkerRoom*)),
+                    SLOT(on_room_connected(const TalkerRoom*)));
+            connect(room, SIGNAL(disconnected(TalkerRoom*)),
+                    SLOT(on_room_disconnected(TalkerRoom*)));
+            room->join_room();
+        }
+    }
+}
+
+void TalkerAccount::close_room(const int room_id) {
+    foreach(TalkerRoom *r, m_active_rooms) {
+        if (r->id() == room_id) {
+            r->logout();
+        }
+    }
+}
+
+void TalkerAccount::on_room_connected(const TalkerRoom *room) {
+    qDebug() << "ROOM CONNECTED:" << room << "connected OK";
+    emit room_connected(room);
+    m_active_rooms.append(const_cast<TalkerRoom*>(room));
+}
+
+void TalkerAccount::on_room_disconnected(TalkerRoom *room) {
+    qDebug() << "ROOM DISCONNECTED:" << room << "disconnected";
+    emit room_disconnected(room);
+    m_active_rooms.removeAll(const_cast<TalkerRoom*>(room));
 }
 
 TalkerAccount* TalkerAccount::create_new(QObject *account_owner,

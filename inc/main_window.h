@@ -32,6 +32,8 @@ namespace Ui {
 }
 // forward declarations
 class TalkerAccount;
+class TalkerRoom;
+class CustomTabWidget;
 
 /**
   * The core of the whole app. Handles choosing accounts, and showing of the
@@ -63,7 +65,9 @@ private:
     QSystemTrayIcon *m_tray; // holds our handly little tray icon
 
     QList<TalkerAccount*> m_accounts; // list of configured accounts
-    //TalkerAccount *m_acct; // current account TODO: allow multiple at once
+    int m_connected_accounts; // holds how many accounts are logged in
+    CustomTabWidget *m_tabs;
+    QTabBar *m_tab_bar;
 
     // single method to enable/disable GUI elements
     void set_interface_enabled(const bool &enabled);
@@ -72,9 +76,13 @@ private:
         void login();
         void logout();
         void submit_message();
-        void on_test(); // silly method hooked up to the file menu for
-                        // on-demand testing
+        void on_test(); // TODO: remove this silly method hooked up to the file
+                        // menu for on-demand testing
+        void join_room();
         void update_rooms(const TalkerAccount&);
+        void on_room_connected(const TalkerRoom*);
+        void on_room_disconnected(const TalkerRoom*);
+        void on_tab_close(int tab_idx);
 
 };
 

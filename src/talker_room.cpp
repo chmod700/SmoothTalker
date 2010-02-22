@@ -20,19 +20,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
+#include <QtGui>
 #include <QtNetwork>
 #include <QtScript>
 
 #include "talker_room.h"
 
 TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
-                       QObject *parent)
+                       const int id, QObject *parent)
     : QObject(parent)
+    , m_id(id)
     , m_acct(acct)
     , m_name(room_name)
     , m_ssl(new QSslSocket(this))
     , m_engine(new QScriptEngine(this))
     , m_timer(new QTimer(this))
+    , m_chat(new QTableView(QObject::findChild<QMainWindow*>("MAINWINDOW")))
+    , m_model(new QStandardItemModel(this))
 {
     QSslConfiguration config = m_ssl->sslConfiguration();
     config.setProtocol(QSsl::TlsV1);
@@ -44,19 +48,24 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     connect(m_ssl, SIGNAL(readyRead()), SLOT(socket_ready_read()));
     connect(m_ssl, SIGNAL(disconnected()), SLOT(socket_disconnected()));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
+
+    m_chat->setModel(m_model);
+    m_chat->horizontalHeader()->setStretchLastSection(true);
+    m_model->setHeaderData(0, Qt::Horizontal, tr("User"));
+    m_model->setHeaderData(1, Qt::Horizontal, tr("Message"));
 }
 
-void TalkerRoom::join_room() {
+void TalkerRoom::join_room() const {
     // open a connection
     m_ssl->connectToHostEncrypted("talkerapp.com", 8500);
 }
 
 void TalkerRoom::logout() {
-    qDebug() << m_name << "logging out";
+    qDebug() << this << "logging out";
     if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
         m_ssl->write("{\"type\":\"close\"}\r\n");
     }
-    m_ssl->close();
+    m_ssl->disconnectFromHost();
 }
 
 void TalkerRoom::socket_encrypted() {
@@ -65,8 +74,13 @@ void TalkerRoom::socket_encrypted() {
     QString body("{\"type\":\"connect\",\"room\":\"%1\","
                  "\"token\":\"%2\"}\r\n");
     body = body.arg(m_name).arg(m_acct->token());
-    qDebug() << "sending" << body;
+    //qDebug() << "sending" << body;
     m_ssl->write(body.toAscii());
+    emit connected(this);
+
+    // make our widget ready to rock...
+    m_model->clear();
+    m_chat->setStyleSheet("QTableWidget {border: 1px solid red;}");
 }
 
 void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
@@ -74,11 +88,12 @@ void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
 }
 
 void TalkerRoom::socket_disconnected() {
+    emit disconnected(this);
     /*
     set_interface_enabled(false);
     m_status_lbl->setText(tr("Not Connected"));
-    m_timer->stop();
     */
+    m_timer->stop();
 }
 
 void TalkerRoom::socket_ready_read() {
@@ -108,7 +123,6 @@ void TalkerRoom::socket_ready_read() {
 
         // m_status_lbl->setText(tr("Connected as %1").arg(user));
 
-        // set_interface_enabled(true);
         m_timer->setInterval(20000);
         m_timer->start();
         //ui->le_chat_entry->setFocus();
@@ -125,15 +139,14 @@ void TalkerRoom::socket_ready_read() {
                 QString user_name = user.property("name").toString();
                 QString user_email= user.property("email").toString();
                 qDebug() << "user in room" << user_name << "email" << user_email;
-                QTableWidgetItem *name_item = new QTableWidgetItem(user_name);
+                //QTableWidgetItem *name_item = new QTableWidgetItem(user_name);
                 //QTableWidgetItem *email_item = new QTableWidgetItem(user_email);
-                QTableWidgetItem *email_item = new QTableWidgetItem("user@email.com");
+                //QTableWidgetItem *email_item = new QTableWidgetItem("user@email.com");
                 // ui->tbl_users->setItem(i, 0, name_item);
                 // ui->tbl_users->setItem(i, 1, email_item);
                 i++;
             }
         }
-
     } else if (response_type == "error") {
         QString msg = val.property("message").toString();
         qWarning() << "SERVER SENT ERROR:" << msg;
@@ -158,17 +171,21 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     QString sender = val.property("user").property("name").toString();
 
     qDebug() << "got message from:" << sender << "MSG:" << content;
-    /*
-    QTreeWidgetItem *entry = new QTreeWidgetItem(ui->chat_log);
-    entry->setText(0, sender);
-    entry->setText(1, content);
+    QStandardItem *i_sender = new QStandardItem(sender);
+    QStandardItem *i_content = new QStandardItem(content);
+    m_model->appendRow(QList<QStandardItem*>() << i_sender << i_content);
+
     //entry->setText(1, QString("TIME:[%1]\n%2").arg(timestamp.toLocalTime().toString("MMM d h:m:s ap")).arg(content));
+    m_chat->scrollToBottom();
 
-    ui->chat_log->scrollToBottom();
-
-    if (!isActiveWindow()) {
+    /*if (!isActiveWindow()) {
         m_tray->showMessage(QString("message from %1").arg(sender), content, QSystemTrayIcon::Information, 2000);
         //raise();
-    }
-    */
+    }*/
+    //emit message_received(sender, content, this);
+}
+
+QDebug operator<<(QDebug dbg, const TalkerRoom &r) {
+    dbg.nospace() << "<ROOM:" << r.name() << ">";
+    return dbg.space();
 }
