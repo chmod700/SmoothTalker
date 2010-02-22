@@ -51,15 +51,6 @@ MainWindow::MainWindow(QWidget *parent)
     // turn off the toolbar
     ui->toolBar->hide();
 
-    // make sure we have SSL access, or the whole app is worthless
-    if (!QSslSocket::supportsSsl()) {
-        QMessageBox::warning(this, tr("Secure Sockets Library Not Found!"),
-                             tr("This tool requires an SSL library with TLSv1 "
-                                "support. And one was not found on your system")
-                             );
-        close();
-    }
-
     // put the tab widget into the main layout and hide it until we connect
     m_tabs->setVisible(false);
     m_tabs->setTabBar(m_tab_bar);
@@ -80,9 +71,19 @@ MainWindow::MainWindow(QWidget *parent)
     m_tray->setToolTip(QCoreApplication::applicationName());
     m_tray->show();
 
-    load_settings();
-    load_accounts();
-    login();
+    // make sure we have SSL access, or the whole app is worthless
+    if (!QSslSocket::supportsSsl()) {
+        QMessageBox::warning(this, tr("Secure Sockets Library Not Found!"),
+                             tr("This tool requires an SSL library with TLSv1 "
+                                "support. And one was not found on your "
+                                "system. The application will now close.")
+                             );
+        QTimer::singleShot(0, this, SLOT(close()));
+    } else {
+        load_settings();
+        load_accounts();
+        login();
+    }
 }
 
 MainWindow::~MainWindow() {
