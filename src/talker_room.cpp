@@ -52,15 +52,17 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
             SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
 
+    m_model->setHeaderData(0, Qt::Horizontal, tr("User"));
+    m_model->setHeaderData(1, Qt::Horizontal, tr("Message"));
     m_chat->setModel(m_model);
     m_chat->horizontalHeader()->setStretchLastSection(true);
-    m_chat->horizontalHeader()->hide();
+    //m_chat->horizontalHeader()->hide();
     m_chat->verticalHeader()->hide();
     m_chat->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_chat->setWordWrap(true);
     m_chat->setShowGrid(false);
-    m_model->setHeaderData(0, Qt::Horizontal, tr("User"));
-    m_model->setHeaderData(1, Qt::Horizontal, tr("Message"));
+    m_chat->setAlternatingRowColors(true);
+    m_chat->setSelectionBehavior(QAbstractItemView::SelectRows);
 }
 
 void TalkerRoom::join_room() const {
@@ -138,12 +140,6 @@ void TalkerRoom::socket_ready_read() {
     } else if (response_type == "users") {
         m_users.clear();
         QScriptValue users_obj = val.property("users");
-        /*
-        {"type":"users","users":[{"name":"LODE","id":1617,"email":"khermann@gmail.com"},
-                                 {"name":"Mochnant","id":2207,"email":null},
-                                 {"name":"chmod","id":1615,"email":"treystout@gmail.com"}],
-         "id":"da975c70021c012de69812313d01d943"}
-        */
         if (users_obj.isArray()) {
             QScriptValueIterator it(users_obj);
             int i = 0;
@@ -184,15 +180,38 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     int time = val.property("time").toInt32();
     QString content = val.property("content").toString();
     QString sender = val.property("user").property("name").toString();
+    int sender_id = val.property("user").property("id").toInteger();
     QDateTime timestamp;
     timestamp.setTime_t(time);
 
     //qDebug() << "got message from:" << sender << "MSG:" << content;
-    QStandardItem *i_sender = new QStandardItem(sender);
-    QStandardItem *i_content = new QStandardItem(content);
-    QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
-    m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender << i_content);
+    // is this another message from the same user who sent the last message?
+    QModelIndex last_msg = m_model->index(m_model->rowCount()-1, 1);
+    bool append_mode = false;
+    int last_sender_id = -1;
+    if (last_msg.isValid()) {
+        last_sender_id = m_model->data(last_msg, Qt::UserRole).toInt();
+        if (sender_id == last_sender_id) {
+            append_mode = true;
+        }
+    }
 
+    if (append_mode) {
+        QStandardItem *last_msg = m_model->item(m_model->rowCount()-1, 2);
+        last_msg->setText(QString("%1\n%2").arg(last_msg->text()).arg(content));
+    } else {
+        QStandardItem *i_sender = new QStandardItem(sender);
+        i_sender->setData(sender_id, Qt::UserRole);
+        QStandardItem *i_content = new QStandardItem(content);
+        QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
+        m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender << i_content);
+
+        i_time->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
+        i_sender->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
+        i_content->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
+    }
+    m_chat->resizeColumnToContents(0);
+    m_chat->resizeColumnToContents(1);
     m_chat->resizeRowsToContents();
     m_chat->scrollToBottom();
 
