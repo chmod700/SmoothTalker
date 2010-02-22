@@ -29,6 +29,12 @@ THE SOFTWARE.
 
 #include "talker_account.h"
 
+struct TalkerUser {
+    QString name;
+    QString email;
+    int id;
+};
+
 class TalkerRoom : public QObject {
     Q_OBJECT
 public:
@@ -41,6 +47,7 @@ public:
     // create a socket to the given room and start chatting
     void join_room() const;
     QWidget *get_widget() const {return m_chat;}
+    QMap<int, TalkerUser> get_users() const {return m_users;}
 
     public slots:
         void logout();
@@ -49,8 +56,10 @@ public:
         void socket_ssl_errors(const QList<QSslError> &errors);
         void socket_ready_read();
         void socket_disconnected();
+        void socket_state_changed(QAbstractSocket::SocketState);
 
         void handle_message(const QScriptValue &val);
+        void submit_message(const QString &msg);
 
 private:
     int m_id; // id of the room
@@ -61,10 +70,13 @@ private:
     QTimer *m_timer; // used for keep-alives
     QTableView *m_chat; // shows messages
     QStandardItemModel *m_model; // stores messages
+    QMap<int, TalkerUser> m_users; // holds records of who is in room
 
 signals:
     void connected(const TalkerRoom *room);
-    void disconnected(const TalkerRoom *room);
+    void disconnected(TalkerRoom *room);
+    void message_received(const QString &sender, const QString &content, const TalkerRoom *room);
+    void users_updated(const TalkerRoom *room);
 };
 
 #endif // TALKERROOM_H

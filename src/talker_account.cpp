@@ -91,10 +91,12 @@ void TalkerAccount::get_available_rooms() {
                   QByteArray("application/json"));
     req.setRawHeader(QByteArray("X-Talker-Token"), m_token.toAscii());
 
+    /*
     qDebug() << "sending request" << req.url();
     foreach(QByteArray hdr, req.rawHeaderList()) {
         qDebug() << "HEADER:" << hdr << ":" << req.rawHeader(hdr);
     }
+    */
     connect(m_net, SIGNAL(finished(QNetworkReply*)),
             SLOT(rooms_request_finished(QNetworkReply*)));
     m_net->get(req);
@@ -106,7 +108,7 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
     // looks something like this...
     // [{"name": "Main", "id": 497}, {"name": "Second Room", "id": 512}]
 
-    qDebug() << "SERVER SAID:" << reply;
+    //qDebug() << "SERVER SAID:" << reply;
     if (r->error() == QNetworkReply::NoError) { // YAY!
         QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
         if (m_engine->hasUncaughtException()) {
@@ -117,7 +119,7 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
                 tr("Failed to parse response from server:\n\n%1").arg(reply));
             return;
         }
-        qDebug() << "Evaluated response:" << val.toString();
+        //qDebug() << "Evaluated response:" << val.toString();
         QString response_type = val.property("type").toString();
 
         if (val.isArray()) {
@@ -136,6 +138,13 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
                         tr("Select a room"), m_avail_rooms.keys(), 0, false);
                 if (!to_join.isEmpty()) {
                     open_room(m_avail_rooms[to_join]);
+                }
+            } else {
+                // restore all open rooms if they still exist...
+                foreach(QString name, m_open_rooms.keys()) {
+                    if (m_avail_rooms.contains(name) && m_avail_rooms[name] == m_open_rooms[name].toInt()) {
+                        open_room(m_avail_rooms[name]);
+                    }
                 }
             }
             emit new_rooms_available(*this);
@@ -182,6 +191,7 @@ void TalkerAccount::open_room(const int room_id) {
             connect(room, SIGNAL(disconnected(TalkerRoom*)),
                     SLOT(on_room_disconnected(TalkerRoom*)));
             room->join_room();
+            m_open_rooms.insert(name, QVariant(id));
         }
     }
 }
@@ -190,6 +200,11 @@ void TalkerAccount::close_room(const int room_id) {
     foreach(TalkerRoom *r, m_active_rooms) {
         if (r->id() == room_id) {
             r->logout();
+            foreach(QString name, m_open_rooms.keys()) {
+                if (m_open_rooms[name].toInt() == r->id()) {
+                    m_open_rooms.remove(name);
+                }
+            }
         }
     }
 }
@@ -202,8 +217,9 @@ void TalkerAccount::on_room_connected(const TalkerRoom *room) {
 
 void TalkerAccount::on_room_disconnected(TalkerRoom *room) {
     qDebug() << "ROOM DISCONNECTED:" << room << "disconnected";
-    emit room_disconnected(room);
     m_active_rooms.removeAll(const_cast<TalkerRoom*>(room));
+    room->deleteLater();
+    emit room_disconnected(room->id());
 }
 
 TalkerAccount* TalkerAccount::create_new(QObject *account_owner,
@@ -227,9 +243,9 @@ bool TalkerAccount::edit() {
     ui.le_domain->setText(m_domain);
     bool accepted = d->exec();
     if (accepted) { // only make an account if they accepted the dialog
-        m_name = ui.le_name->text();
-        m_token = ui.le_token->text();
-        m_domain = ui.le_domain->text();
+        m_name = ui.le_name->text().trimmed();
+        m_token = ui.le_token->text().trimmed();
+        m_domain = ui.le_domain->text().trimmed();
     }
     d->deleteLater();
     return accepted;

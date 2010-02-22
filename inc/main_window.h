@@ -81,8 +81,12 @@ private:
         void join_room();
         void update_rooms(const TalkerAccount&);
         void on_room_connected(const TalkerRoom*);
-        void on_room_disconnected(const TalkerRoom*);
+        void on_room_disconnected(const int room_id);
+        void on_tab_switch(int new_idx);
         void on_tab_close(int tab_idx);
+        void on_message_received(const QString &sender, const QString &content, const TalkerRoom *room);
+        void on_users_updated(const TalkerRoom*);
+
 
 };
 

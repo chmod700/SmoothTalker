@@ -37,6 +37,7 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     , m_timer(new QTimer(this))
     , m_chat(new QTableView(QObject::findChild<QMainWindow*>("MAINWINDOW")))
     , m_model(new QStandardItemModel(this))
+    , m_users(QMap<int, TalkerUser>())
 {
     QSslConfiguration config = m_ssl->sslConfiguration();
     config.setProtocol(QSsl::TlsV1);
@@ -47,10 +48,17 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
             SLOT(socket_ssl_errors(QList<QSslError>)));
     connect(m_ssl, SIGNAL(readyRead()), SLOT(socket_ready_read()));
     connect(m_ssl, SIGNAL(disconnected()), SLOT(socket_disconnected()));
+    connect(m_ssl, SIGNAL(stateChanged(QAbstractSocket::SocketState)),
+            SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
 
     m_chat->setModel(m_model);
     m_chat->horizontalHeader()->setStretchLastSection(true);
+    m_chat->horizontalHeader()->hide();
+    m_chat->verticalHeader()->hide();
+    m_chat->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_chat->setWordWrap(true);
+    m_chat->setShowGrid(false);
     m_model->setHeaderData(0, Qt::Horizontal, tr("User"));
     m_model->setHeaderData(1, Qt::Horizontal, tr("Message"));
 }
@@ -64,17 +72,20 @@ void TalkerRoom::logout() {
     qDebug() << this << "logging out";
     if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
         m_ssl->write("{\"type\":\"close\"}\r\n");
+        qDebug() << this << "sent close command";
     }
+    m_ssl->flush();
+    qDebug() << this << "flushed";
     m_ssl->disconnectFromHost();
+    //m_ssl->abort();
 }
 
 void TalkerRoom::socket_encrypted() {
     // connection has been made successfully
-    qDebug() << "socket encrypted";
+    //qDebug() << "socket encrypted";
     QString body("{\"type\":\"connect\",\"room\":\"%1\","
                  "\"token\":\"%2\"}\r\n");
     body = body.arg(m_name).arg(m_acct->token());
-    //qDebug() << "sending" << body;
     m_ssl->write(body.toAscii());
     emit connected(this);
 
@@ -84,24 +95,25 @@ void TalkerRoom::socket_encrypted() {
 }
 
 void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
-    qWarning() << "SSL ERROR:" << errors;
+    qWarning() << "\tSSL ERROR:" << errors;
+}
+
+void TalkerRoom::socket_state_changed(QAbstractSocket::SocketState state) {
+    qDebug() << "\tRoom:" << m_name << "socket state changed to:" << state;
 }
 
 void TalkerRoom::socket_disconnected() {
+    qDebug() << this << "DISCONNECTED";
     emit disconnected(this);
-    /*
-    set_interface_enabled(false);
-    m_status_lbl->setText(tr("Not Connected"));
-    */
     m_timer->stop();
+    //m_ssl->deleteLater();
+    //m_ssl = 0;
 }
 
 void TalkerRoom::socket_ready_read() {
-    qDebug() << "socket is ready to read";
-
     // get the server's reply
     QString reply = QString(m_ssl->readAll()).trimmed();
-    qDebug() << QString("server said: (%1)").arg(reply);
+    //qDebug() << QString("server said: (%1)").arg(reply);
 
 
     QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
@@ -113,39 +125,40 @@ void TalkerRoom::socket_ready_read() {
         logout();
         return;
     }
-    qDebug() << "Evaluated response:" << val.toString();
+    //qDebug() << "Evaluated response:" << val.toString();
 
     QString response_type = val.property("type").toString();
-    qDebug() << "RESPONSE DISPATCH:" << response_type;
+    //qDebug() << "RESPONSE DISPATCH:" << response_type;
     if (response_type == "connected") {
         QString user = val.property("user").property("name").toString();
         qDebug() << "user is:" << user;
-
-        // m_status_lbl->setText(tr("Connected as %1").arg(user));
-
         m_timer->setInterval(20000);
         m_timer->start();
-        //ui->le_chat_entry->setFocus();
+        // m_status_lbl->setText(tr("Connected as %1").arg(user));
     } else if (response_type == "users") {
-        // ui->tbl_users->clearContents();
-        // ui->tbl_users->setRowCount(val.property("users").property("length").toInteger());
+        m_users.clear();
         QScriptValue users_obj = val.property("users");
+        /*
+        {"type":"users","users":[{"name":"LODE","id":1617,"email":"khermann@gmail.com"},
+                                 {"name":"Mochnant","id":2207,"email":null},
+                                 {"name":"chmod","id":1615,"email":"treystout@gmail.com"}],
+         "id":"da975c70021c012de69812313d01d943"}
+        */
         if (users_obj.isArray()) {
             QScriptValueIterator it(users_obj);
             int i = 0;
             while(it.hasNext()) {
                 it.next();
                 QScriptValue user = it.value();
-                QString user_name = user.property("name").toString();
-                QString user_email= user.property("email").toString();
-                qDebug() << "user in room" << user_name << "email" << user_email;
-                //QTableWidgetItem *name_item = new QTableWidgetItem(user_name);
-                //QTableWidgetItem *email_item = new QTableWidgetItem(user_email);
-                //QTableWidgetItem *email_item = new QTableWidgetItem("user@email.com");
-                // ui->tbl_users->setItem(i, 0, name_item);
-                // ui->tbl_users->setItem(i, 1, email_item);
+                TalkerUser u;
+                u.name = user.property("name").toString().trimmed();
+                u.email = user.property("email").toString().trimmed();
+                u.id = user.property("id").toInteger();
+                m_users[u.id] = u;
+                //qDebug() << "user in room" << u.name << "email" << u.email << "id" << u.id;
                 i++;
             }
+            emit users_updated(this);
         }
     } else if (response_type == "error") {
         QString msg = val.property("message").toString();
@@ -155,34 +168,44 @@ void TalkerRoom::socket_ready_read() {
                              .arg(msg));
     } else if (response_type == "message") {
         handle_message(val);
+    } else {
+        qDebug() << "unhandled message type" << response_type;
     }
 }
 
 void TalkerRoom::stay_alive() {
-    qDebug() << "pinging...";
+    //qDebug() << "pinging...";
     if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
         m_ssl->write("{\"type\":\"ping\"}\r\n");
     }
 }
 
 void TalkerRoom::handle_message(const QScriptValue &val) {
-    QDateTime timestamp = val.property("time").toDateTime();
+    int time = val.property("time").toInt32();
     QString content = val.property("content").toString();
     QString sender = val.property("user").property("name").toString();
+    QDateTime timestamp;
+    timestamp.setTime_t(time);
 
-    qDebug() << "got message from:" << sender << "MSG:" << content;
+    //qDebug() << "got message from:" << sender << "MSG:" << content;
     QStandardItem *i_sender = new QStandardItem(sender);
     QStandardItem *i_content = new QStandardItem(content);
-    m_model->appendRow(QList<QStandardItem*>() << i_sender << i_content);
+    QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
+    m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender << i_content);
 
-    //entry->setText(1, QString("TIME:[%1]\n%2").arg(timestamp.toLocalTime().toString("MMM d h:m:s ap")).arg(content));
+    m_chat->resizeRowsToContents();
     m_chat->scrollToBottom();
 
-    /*if (!isActiveWindow()) {
-        m_tray->showMessage(QString("message from %1").arg(sender), content, QSystemTrayIcon::Information, 2000);
-        //raise();
-    }*/
-    //emit message_received(sender, content, this);
+    emit message_received(sender, content, this);
+}
+
+void TalkerRoom::submit_message(const QString &msg) {
+    if (m_ssl && m_ssl->isEncrypted()) {
+        QString body("{\"type\":\"message\",\"content\":\"%1\"}\r\n");
+        m_ssl->write(body.arg(msg).toAscii());
+    } else {
+        qWarning() << "tried to submit message to non-opened socket." << this;
+    }
 }
 
 QDebug operator<<(QDebug dbg, const TalkerRoom &r) {

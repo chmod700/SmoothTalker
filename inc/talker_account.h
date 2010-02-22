@@ -46,6 +46,7 @@ public:
     QString token() const {return m_token;}
     QString domain() const {return m_domain;}
     QMap<QString, int> avail_rooms() const {return m_avail_rooms;}
+    QList<TalkerRoom*> active_rooms() const {return m_active_rooms;}
 
     void set_name(const QString &name);
     void set_token(const QString &token);
@@ -92,7 +93,7 @@ signals:
     void settings_changed(const TalkerAccount &acct);
     void new_rooms_available(const TalkerAccount &acct);
     void room_connected(const TalkerRoom *room);
-    void room_disconnected(const TalkerRoom *room);
+    void room_disconnected(int room_id);
 };
 
 #endif // TALKERACCOUNT_H
