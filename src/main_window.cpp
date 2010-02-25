@@ -260,6 +260,9 @@ void MainWindow::on_room_connected(const TalkerRoom *room) {
             SLOT(on_users_updated(const TalkerRoom*)));
     connect(room, SIGNAL(user_updated(const TalkerRoom*, const TalkerUser*)),
             SLOT(on_user_updated(const TalkerRoom*, const TalkerUser*)));
+    connect(this, SIGNAL(options_changed(QSettings*)), room,
+            SLOT(on_options_changed(QSettings*)));
+    emit options_changed(m_settings); // to propogate to this new room
 
     // draw a tab for this dude.
     QWidget *w = room->get_widget();
@@ -371,6 +374,7 @@ void MainWindow::on_tab_switch(int new_idx) {
 void MainWindow::on_options_activated() {
     if (m_options->exec()) { // accepted
         m_options->save_settings(m_settings);
+        emit options_changed(m_settings);
     } else { // cancel
         m_options->load_settings(m_settings);
     }

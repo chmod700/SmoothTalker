@@ -64,6 +64,7 @@ public:
         void submit_message(const QString &msg);
 
         void on_avatar_loaded(QNetworkReply*);
+        void on_options_changed(QSettings*);
 
 private:
     int m_id; // id of the room

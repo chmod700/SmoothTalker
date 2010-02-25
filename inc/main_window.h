@@ -90,6 +90,8 @@ private:
         void on_user_updated(const TalkerRoom*, const TalkerUser*);
         void on_options_activated(); // user clicked options menu item
 
+signals:
+        void options_changed(QSettings*);
 
 };
 

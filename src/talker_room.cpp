@@ -134,7 +134,8 @@ void TalkerRoom::socket_ready_read() {
 
     QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
     if (m_engine->hasUncaughtException()) {
-        qWarning() << "SCRIPT EXCEPTION" << m_engine->uncaughtException().toString();
+        qWarning() << "SCRIPT EXCEPTION"
+                << m_engine->uncaughtException().toString();
         QMessageBox::warning(NULL, tr("Communication Error!"),
                              tr("Failed to parse response from server:\n\n%1")
                              .arg(reply));
@@ -299,6 +300,11 @@ void TalkerRoom::on_avatar_loaded(QNetworkReply *r) {
         emit user_updated(this, u);
     }
     r->deleteLater();
+}
+
+void TalkerRoom::on_options_changed(QSettings *s) {
+    m_chat->setColumnHidden(0, !s->value("options/show_timestamps", true)
+                            .toBool());
 }
 
 QDebug operator<<(QDebug dbg, const TalkerRoom &r) {
