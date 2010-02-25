@@ -30,6 +30,7 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
                        const int id, QObject *parent)
     : QObject(parent)
     , m_id(id)
+    , m_user_id(0)
     , m_acct(acct)
     , m_name(room_name)
     , m_ssl(new QSslSocket(this))
@@ -52,6 +53,8 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     connect(m_ssl, SIGNAL(stateChanged(QAbstractSocket::SocketState)),
             SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
+    connect(m_net, SIGNAL(finished(QNetworkReply*)),
+            SLOT(on_avatar_loaded(QNetworkReply*)));
 
     m_model->setHeaderData(0, Qt::Horizontal, tr("Time"));
     m_model->setHeaderData(1, Qt::Horizontal, tr("User"));
@@ -122,8 +125,6 @@ void TalkerRoom::socket_disconnected() {
     qDebug() << this << "DISCONNECTED";
     emit disconnected(this);
     m_timer->stop();
-    //m_ssl->deleteLater();
-    //m_ssl = 0;
 }
 
 void TalkerRoom::socket_ready_read() {
@@ -146,15 +147,25 @@ void TalkerRoom::socket_ready_read() {
     QString response_type = val.property("type").toString();
     //qDebug() << "RESPONSE DISPATCH:" << response_type;
     if (response_type == "connected") {
-        QString user = val.property("user").property("name").toString();
-        qDebug() << "user is:" << user;
+        m_user_id = val.property("user").property("id").toInteger();
+        // start the keep-alive timer
         m_timer->setInterval(20000);
         m_timer->start();
-        // m_status_lbl->setText(tr("Connected as %1").arg(user));
+        //QString user = val.property("user").property("name").toString();
+        //qDebug() << "user is:" << user;
+        //m_status_lbl->setText(tr("Connected as %1").arg(user));
     } else if (response_type == "users") {
         handle_users(val);
     } else if (response_type == "message") {
         handle_message(val);
+    } else if (response_type == "idle") {
+        handle_idle(val);
+    } else if (response_type == "back") {
+        handle_back(val);
+    } else if (response_type == "join") {
+        handle_join(val);
+    } else if (response_type == "leave") {
+        handle_leave(val);
     } else if (response_type == "error") {
         QString msg = val.property("message").toString();
         qWarning() << "SERVER SENT ERROR:" << msg;
@@ -187,32 +198,8 @@ void TalkerRoom::handle_users(const QScriptValue &val) {
         while(it.hasNext()) {
             it.next();
             QScriptValue user = it.value();
-            TalkerUser *u = new TalkerUser();
-            u->name = user.property("name").toString().trimmed();
-            u->email = user.property("email").toString().trimmed();
-            u->id = user.property("id").toInteger();
+            TalkerUser *u = this->add_user(user);
             m_users[u->id] = u;
-            //qDebug() << "user in room" << u.name << "email" << u.email
-            //  << "id" << u.id;
-
-            QCryptographicHash email_hash(QCryptographicHash::Md5);
-            email_hash.addData(u->email.toAscii());
-            QString hash(email_hash.result().toHex());
-            QString size("48"); // TODO: move this to options
-            QString default_type("identicon"); // TODO: move this to options
-            QUrl img_url(QString("http://www.gravatar.com/avatar/%1?s=%2&d=%3")
-                         .arg(hash)
-                         .arg(size)
-                         .arg(default_type));
-            qDebug() << "requesting image for" << u->name << "from"
-                    << img_url.toString();
-            QNetworkRequest req(img_url);
-            QNetworkReply *r = m_net->get(req);
-            m_avatar_requests.insert(r, u);
-
-            connect(m_net, SIGNAL(finished(QNetworkReply*)),
-                    SLOT(on_avatar_loaded(QNetworkReply*)));
-
             i++;
         }
         emit users_updated(this);
@@ -220,15 +207,24 @@ void TalkerRoom::handle_users(const QScriptValue &val) {
 }
 
 void TalkerRoom::handle_message(const QScriptValue &val) {
-    // TODO, just use the user_id from the message, don't re-parse all this crap
+    int sender_id = val.property("user").property("id").toInteger();
+
+    TalkerUser *u = m_users[sender_id];
+    if (!u) {
+        qWarning() << "received message from unknown user with id:"
+                << sender_id << "name:"
+                << val.property("user").property("name").toString();
+        return;
+    }
+
     int time = val.property("time").toInt32();
     QString content = val.property("content").toString();
-    QString sender = val.property("user").property("name").toString();
-    int sender_id = val.property("user").property("id").toInteger();
     QDateTime timestamp;
     timestamp.setTime_t(time);
 
-    //qDebug() << "got message from:" << sender << "MSG:" << content;
+    qDebug() << "got message from:" << m_users[sender_id]->name
+            << "MSG:" << content;
+
     // is this another message from the same user who sent the last message?
     QModelIndex last_msg = m_model->index(m_model->rowCount()-1, 1);
     bool append_mode = false;
@@ -244,15 +240,15 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
         QStandardItem *last_msg = m_model->item(m_model->rowCount()-1, 2);
         last_msg->setText(QString("%1\n%2").arg(last_msg->text()).arg(content));
     } else {
-        QStandardItem *i_sender = new QStandardItem(sender);
-        i_sender->setData(sender_id, Qt::UserRole);
-        TalkerUser *u = m_users[sender_id];
+        QStandardItem *i_sender = new QStandardItem(u->name);
+        i_sender->setData(u->id, Qt::UserRole);
         if (!u->avatar.isNull()) {
             i_sender->setIcon(u->avatar);
         }
         QStandardItem *i_content = new QStandardItem(content);
         QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
-        m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender << i_content);
+        m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender
+                           << i_content);
 
         i_time->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
         i_sender->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
@@ -263,7 +259,75 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     m_chat->resizeRowsToContents();
     m_chat->scrollToBottom();
 
-    emit message_received(sender, content, this);
+    emit message_received(u->name, content, this);
+}
+
+void TalkerRoom::handle_idle(const QScriptValue &val) {
+    int user_id = val.property("user").property("id").toInteger();
+    QDateTime timestamp = time_from_message(val);
+    TalkerUser *u = m_users[user_id];
+    if (u) {
+        qDebug() << "user" << u->id << u->name << "has gone idle";
+        if (user_id == m_user_id) {
+            return; // ignore these messages for ourselves
+        }
+        /*system_message(timestamp.toString("h:mmap"),
+                       QString("%1 is now idle").arg(u->name));*/
+        u->idle = true;
+        emit user_updated(this, u);
+    } else {
+        qWarning() << "got idle event for unknown user id" << user_id;
+    }
+}
+
+void TalkerRoom::handle_back(const QScriptValue &val) {
+    int user_id = val.property("user").property("id").toInteger();
+    QDateTime timestamp = time_from_message(val);
+    TalkerUser *u = m_users[user_id];
+    if (u) {
+        qDebug() << "user" << u->id << u->name << "has come back";
+        if (user_id == m_user_id) {
+            return; // ignore these messages for ourselves
+        }
+        /*system_message(timestamp.toString("h:mmap"),
+                       QString("%1 is now back").arg(u->name));*/
+        u->idle = false;
+        emit user_updated(this, u);
+    } else {
+        qWarning() << "got back event for unknown user id" << user_id;
+    }
+}
+
+void TalkerRoom::handle_join(const QScriptValue &val) {
+    QDateTime timestamp = time_from_message(val);
+    TalkerUser *u = add_user(val.property("user"));
+    if (u) {
+        qDebug() << "user" << u->id << u->name << "joined room" << this;
+        if (u->id == m_user_id) {
+            return; // ignore these messages for ourselves
+        }
+        system_message(timestamp.toString("h:mmap"),
+                       QString("%1 has joined the room").arg(u->name));
+        m_users[u->id] = u;
+        emit user_updated(this, u);
+    } else {
+        qWarning() << "got join event and had trouble adding the user";
+    }
+}
+
+void TalkerRoom::handle_leave(const QScriptValue &val) {
+    int user_id = val.property("user").property("id").toInteger();
+    QDateTime timestamp = time_from_message(val);
+    TalkerUser *u = m_users.take(user_id);
+    if (u) {
+        qDebug() << "user left room" << u->id << u->name;
+        system_message(timestamp.toString("h:mmap"),
+                       QString("%1 has left the room").arg(u->name));
+        delete u;
+        emit users_updated(this);
+    } else {
+        qWarning() << "got leave event for unknown user_id" << user_id;
+    }
 }
 
 void TalkerRoom::submit_message(const QString &msg) {
@@ -305,6 +369,50 @@ void TalkerRoom::on_avatar_loaded(QNetworkReply *r) {
 void TalkerRoom::on_options_changed(QSettings *s) {
     m_chat->setColumnHidden(0, !s->value("options/show_timestamps", true)
                             .toBool());
+}
+
+TalkerUser *TalkerRoom::add_user(const QScriptValue &user) {
+    TalkerUser *u = new TalkerUser();
+    u->name = user.property("name").toString().trimmed();
+    u->email = user.property("email").toString().trimmed();
+    u->id = user.property("id").toInteger();
+    u->idle = false;
+
+    qDebug() << "new user" << u->name << "email" << u->email << "id" << u->id;
+
+    QCryptographicHash email_hash(QCryptographicHash::Md5);
+    email_hash.addData(u->email.toAscii());
+    QString hash(email_hash.result().toHex());
+    QString size("48"); // TODO: move this to options
+    //QString default_type("identicon"); // TODO: move this to options
+    QString default_type("wavatar"); // TODO: move this to options
+    QUrl img_url(QString("http://www.gravatar.com/avatar/%1?s=%2&d=%3")
+                 .arg(hash)
+                 .arg(size)
+                 .arg(default_type));
+    qDebug() << "requesting image for" << u->name << "from"
+            << img_url.toString();
+    QNetworkRequest req(img_url);
+    QNetworkReply *r = m_net->get(req);
+    m_avatar_requests.insert(r, u);
+    return u;
+}
+
+void TalkerRoom::system_message(const QString &time, const QString &message) {
+    QStandardItem *i_time = new QStandardItem(time);
+    QStandardItem *i_icon = new QStandardItem(
+            QIcon(":img/icons/information.png"), "");
+    QStandardItem *i_msg = new QStandardItem(message);
+    i_time->setForeground(QBrush(Qt::gray));
+    i_msg->setForeground(QBrush(Qt::gray));
+    m_model->appendRow(QList<QStandardItem*>() << i_time << i_icon << i_msg);
+}
+
+QDateTime TalkerRoom::time_from_message(const QScriptValue &val) {
+    int time = val.property("time").toInt32();
+    QDateTime retval;
+    retval.setTime_t(time);
+    return retval;
 }
 
 QDebug operator<<(QDebug dbg, const TalkerRoom &r) {

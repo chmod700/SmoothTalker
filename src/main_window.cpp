@@ -311,15 +311,10 @@ void MainWindow::on_users_updated(const TalkerRoom *room) {
     QMap<int, TalkerUser*> users = room->get_users();
 
     ui->tbl_users->clearContents();
-    ui->tbl_users->setRowCount(users.count());
+    ui->tbl_users->setRowCount(0);
     int i = 0;
     foreach(TalkerUser *u, users.values()) {
-        QTableWidgetItem *name_item = new QTableWidgetItem(u->name);
-        name_item->setData(Qt::UserRole, u->id);
-        if (!u->avatar.isNull()) {
-            name_item->setIcon(u->avatar);
-        }
-        ui->tbl_users->setItem(i, 0, name_item);
+        add_user_to_room_list(u);
         ++i;
     }
 }
@@ -334,21 +329,38 @@ void MainWindow::on_user_updated(const TalkerRoom *room,
     bool found = false;
     for (int i = 0; i < ui->tbl_users->rowCount(); ++i) {
         QTableWidgetItem *item = ui->tbl_users->item(i, 0);
+        if (!item) {
+            qWarning() << "the user list appears to hold items that don't "
+                    << "exist!";
+            continue;
+        }
         if (item->data(Qt::UserRole).toInt() == user->id) {
-            item->setText(user->name);
             item->setIcon(user->avatar);
+            if (user->idle) {
+                item->setForeground(Qt::gray);
+                item->setText(tr("(IDLE) %1").arg(user->name));
+            } else {
+                item->setForeground(Qt::black);
+                item->setText(user->name);
+            }
             found = true;
             break;
         }
     }
     if (!found) {
-        QTableWidgetItem *name_item = new QTableWidgetItem(user->name);
-        name_item->setData(Qt::UserRole, user->id);
-        if (!user->avatar.isNull()) {
-            name_item->setIcon(user->avatar);
-        }
-        ui->tbl_users->setItem(ui->tbl_users->rowCount(), 0, name_item);
+        add_user_to_room_list(user);
     }
+}
+
+void MainWindow::add_user_to_room_list(const TalkerUser *user) {
+    QTableWidgetItem *name_item = new QTableWidgetItem(user->name);
+    name_item->setData(Qt::UserRole, user->id);
+    if (!user->avatar.isNull()) {
+        name_item->setIcon(user->avatar);
+    }
+    ui->tbl_users->insertRow(0);
+    ui->tbl_users->setItem(0, 0, name_item);
+    ui->tbl_users->sortByColumn(0);
 }
 
 void MainWindow::on_tab_close(int tab_idx) {

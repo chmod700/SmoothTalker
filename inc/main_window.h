@@ -73,6 +73,7 @@ private:
 
     // single method to enable/disable GUI elements
     void set_interface_enabled(const bool &enabled);
+    void add_user_to_room_list(const TalkerUser *user);
 
     private slots:
         void login();

@@ -34,6 +34,7 @@ struct TalkerUser {
     QString email;
     int id;
     QIcon avatar;
+    bool idle;
 };
 
 class TalkerRoom : public QObject {
@@ -61,13 +62,20 @@ public:
 
         void handle_users(const QScriptValue &val);
         void handle_message(const QScriptValue &val);
+        void handle_idle(const QScriptValue &val);
+        void handle_back(const QScriptValue &val);
+        void handle_join(const QScriptValue &val);
+        void handle_leave(const QScriptValue &val);
         void submit_message(const QString &msg);
 
         void on_avatar_loaded(QNetworkReply*);
         void on_options_changed(QSettings*);
 
+        void system_message(const QString &time, const QString &message);
+
 private:
     int m_id; // id of the room
+    int m_user_id; // our user id we logged in with
     TalkerAccount *m_acct; // the account that has access to this room
     QString m_name; // the name of the room
     QSslSocket *m_ssl; // used for messages
@@ -79,6 +87,9 @@ private:
     QMap<int, TalkerUser*> m_users; // holds records of who is in room
     QMap<QNetworkReply*, TalkerUser*> m_avatar_requests; // keep track of
         // web requests for avatars
+
+    TalkerUser *add_user(const QScriptValue &user);
+    QDateTime time_from_message(const QScriptValue &val);
 
 signals:
     void connected(const TalkerRoom *room);
