@@ -80,6 +80,7 @@ TalkerRoom::~TalkerRoom() {
 
 void TalkerRoom::join_room() const {
     // open a connection
+    status_message(tr("connecting to server..."));
     m_ssl->connectToHostEncrypted("talkerapp.com", 8500);
 }
 
@@ -95,6 +96,7 @@ void TalkerRoom::logout() {
         qDebug() << this << "sent close command";
     }
     */
+    status_message(tr("disconnecting from server..."));
     m_ssl->flush();
     m_ssl->disconnectFromHost();
 }
@@ -102,11 +104,14 @@ void TalkerRoom::logout() {
 void TalkerRoom::socket_encrypted() {
     // connection has been made successfully
     //qDebug() << "socket encrypted";
+    status_message(tr("connection encrypted. logging in..."));
+
     QString body("{\"type\":\"connect\",\"room\":\"%1\","
                  "\"token\":\"%2\"}\r\n");
     body = body.arg(m_name).arg(m_acct->token());
     m_ssl->write(body.toAscii());
     emit connected(this);
+
 
     // make our widget ready to rock...
     m_model->clear();
@@ -118,11 +123,12 @@ void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
 }
 
 void TalkerRoom::socket_state_changed(QAbstractSocket::SocketState state) {
-    qDebug() << "\tRoom:" << m_name << "socket state changed to:" << state;
+    //qDebug() << "\tRoom:" << m_name << "socket state changed to:" << state;
 }
 
 void TalkerRoom::socket_disconnected() {
     qDebug() << this << "DISCONNECTED";
+    status_message(tr("disconnected from server"));
     emit disconnected(this);
     m_timer->stop();
 }
@@ -154,6 +160,8 @@ void TalkerRoom::socket_ready_read() {
         //QString user = val.property("user").property("name").toString();
         //qDebug() << "user is:" << user;
         //m_status_lbl->setText(tr("Connected as %1").arg(user));
+        status_message(tr("connected as %1").arg(val.property("user")
+                                                 .property("name").toString()));
     } else if (response_type == "users") {
         handle_users(val);
     } else if (response_type == "message") {
@@ -413,6 +421,11 @@ QDateTime TalkerRoom::time_from_message(const QScriptValue &val) {
     QDateTime retval;
     retval.setTime_t(time);
     return retval;
+}
+
+void TalkerRoom::status_message(const QString &msg) const {
+    QString text = tr("%1: %2").arg(m_name).arg(msg);
+    emit new_status_message(text);
 }
 
 QDebug operator<<(QDebug dbg, const TalkerRoom &r) {

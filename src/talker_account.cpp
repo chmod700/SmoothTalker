@@ -190,6 +190,8 @@ void TalkerAccount::open_room(const int room_id) {
                     SLOT(on_room_connected(const TalkerRoom*)));
             connect(room, SIGNAL(disconnected(TalkerRoom*)),
                     SLOT(on_room_disconnected(TalkerRoom*)));
+            connect(room, SIGNAL(new_status_message(QString)),
+                    SIGNAL(new_status_message(QString))); // pass through
             room->join_room();
             m_open_rooms.insert(name, QVariant(id));
         }

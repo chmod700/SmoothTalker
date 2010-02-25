@@ -90,6 +90,7 @@ private:
 
     TalkerUser *add_user(const QScriptValue &user);
     QDateTime time_from_message(const QScriptValue &val);
+    void status_message(const QString &msg) const;
 
 signals:
     void connected(const TalkerRoom *room);
@@ -97,6 +98,7 @@ signals:
     void message_received(const QString &sender, const QString &content, const TalkerRoom *room);
     void users_updated(const TalkerRoom *room);
     void user_updated(const TalkerRoom *room, const TalkerUser *user);
+    void new_status_message(const QString &msg) const;
 };
 
 #endif // TALKERROOM_H

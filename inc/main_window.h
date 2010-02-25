@@ -61,7 +61,6 @@ protected:
 private:
     Ui::MainWindow *ui;
     QSettings *m_settings; // manages app settings
-    QLabel *m_status_lbl; // where status bar messages are written
     QMenu *m_tray_menu; // the context menu for right clicks on our tray icon
     QSystemTrayIcon *m_tray; // holds our handly little tray icon
     OptionsDialog *m_options; // options dialog menu
@@ -90,6 +89,8 @@ private:
         void on_users_updated(const TalkerRoom*);
         void on_user_updated(const TalkerRoom*, const TalkerUser*);
         void on_options_activated(); // user clicked options menu item
+
+        void status_message(const QString &msg);
 
 signals:
         void options_changed(QSettings*);

@@ -94,6 +94,7 @@ signals:
     void new_rooms_available(const TalkerAccount &acct);
     void room_connected(const TalkerRoom *room);
     void room_disconnected(int room_id);
+    void new_status_message(const QString &msg) const;
 };
 
 #endif // TALKERACCOUNT_H

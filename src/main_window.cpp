@@ -36,7 +36,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_settings(new QSettings(QSettings::IniFormat, QSettings::UserScope,
                 QCoreApplication::organizationName(),
                 QCoreApplication::applicationName(), this))
-    , m_status_lbl(new QLabel(this))
     , m_tray_menu(new QMenu(this))
     , m_tray(new QSystemTrayIcon(this))
     , m_options(new OptionsDialog(this))
@@ -61,9 +60,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tabs, SIGNAL(tabCloseRequested(int)), SLOT(on_tab_close(int)));
     connect(m_tabs, SIGNAL(currentChanged(int)), SLOT(on_tab_switch(int)));
     ui->vbox_main->insertWidget(1, m_tabs, 10);
-
-    statusBar()->addPermanentWidget(m_status_lbl, 1);
-    m_status_lbl->setText(tr("Not Connected"));
 
     //setup system tray icon
     m_tray_menu->addAction(QIcon(":img/icons/door_out.png"), tr("E&xit"),
@@ -192,6 +188,7 @@ void MainWindow::join_room() {
             }
         }
     }
+    QApplication::processEvents();
 }
 
 void MainWindow::login() {
@@ -220,6 +217,8 @@ void MainWindow::login() {
                 SLOT(on_room_connected(const TalkerRoom*)));
         connect(m_accounts.at(0), SIGNAL(room_disconnected(const int)),
                 SLOT(on_room_disconnected(const int)));
+        connect(m_accounts.at(0), SIGNAL(new_status_message(const QString&)),
+                SLOT(status_message(const QString&)));
     } else {
         // show a list of all accounts and let them login to any of them
     }
@@ -262,6 +261,7 @@ void MainWindow::on_room_connected(const TalkerRoom *room) {
             SLOT(on_user_updated(const TalkerRoom*, const TalkerUser*)));
     connect(this, SIGNAL(options_changed(QSettings*)), room,
             SLOT(on_options_changed(QSettings*)));
+
     emit options_changed(m_settings); // to propogate to this new room
 
     // draw a tab for this dude.
@@ -364,7 +364,7 @@ void MainWindow::add_user_to_room_list(const TalkerUser *user) {
 }
 
 void MainWindow::on_tab_close(int tab_idx) {
-    qDebug() << "request to close tab index:" << tab_idx;
+    //qDebug() << "request to close tab index:" << tab_idx;
     int room_id = m_tab_bar->tabData(tab_idx).toInt();
     foreach(TalkerAccount *a, m_accounts) {
         a->close_room(room_id);
@@ -372,7 +372,7 @@ void MainWindow::on_tab_close(int tab_idx) {
 }
 
 void MainWindow::on_tab_switch(int new_idx) {
-    qDebug() << "request to switch to tab index:" << new_idx;
+    //qDebug() << "request to switch to tab index:" << new_idx;
     int room_id = m_tab_bar->tabData(new_idx).toInt();
     foreach(TalkerAccount *a, m_accounts) {
         foreach(TalkerRoom *r, a->active_rooms()) {
@@ -390,4 +390,8 @@ void MainWindow::on_options_activated() {
     } else { // cancel
         m_options->load_settings(m_settings);
     }
+}
+
+void MainWindow::status_message(const QString &msg) {
+    statusBar()->showMessage(msg, 2000);
 }
