@@ -99,14 +99,20 @@
     <property name="title">
      <string>File</string>
     </property>
-    <addaction name="action_test"/>
-    <addaction name="separator"/>
     <addaction name="action_login"/>
     <addaction name="action_logout"/>
+    <addaction name="action_options"/>
     <addaction name="separator"/>
     <addaction name="action_exit"/>
    </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="action_about"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <widget class="QDockWidget" name="dockWidget">
@@ -146,6 +152,12 @@
        </property>
        <property name="alternatingRowColors">
         <bool>true</bool>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>32</width>
+         <height>32</height>
+        </size>
        </property>
        <property name="showGrid">
         <bool>false</bool>
@@ -193,11 +205,22 @@
    </attribute>
   </widget>
   <action name="action_exit">
+   <property name="icon">
+    <iconset resource="../resources/icons.qrc">
+     <normaloff>:/img/icons/door_out.png</normaloff>:/img/icons/door_out.png</iconset>
+   </property>
    <property name="text">
     <string>Exit</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
   </action>
   <action name="action_login">
+   <property name="icon">
+    <iconset resource="../resources/icons.qrc">
+     <normaloff>:/img/icons/connect.png</normaloff>:/img/icons/connect.png</iconset>
+   </property>
    <property name="text">
     <string>Sign In...</string>
    </property>
@@ -206,13 +229,30 @@
    <property name="enabled">
     <bool>false</bool>
    </property>
+   <property name="icon">
+    <iconset resource="../resources/icons.qrc">
+     <normaloff>:/img/icons/disconnect.png</normaloff>:/img/icons/disconnect.png</iconset>
+   </property>
    <property name="text">
     <string>Sign Out</string>
    </property>
   </action>
-  <action name="action_test">
+  <action name="action_options">
+   <property name="icon">
+    <iconset resource="../resources/icons.qrc">
+     <normaloff>:/img/icons/wrench.png</normaloff>:/img/icons/wrench.png</iconset>
+   </property>
    <property name="text">
-    <string>Test</string>
+    <string>Options...</string>
+   </property>
+  </action>
+  <action name="action_about">
+   <property name="icon">
+    <iconset resource="../resources/icons.qrc">
+     <normaloff>:/img/icons/information.png</normaloff>:/img/icons/information.png</iconset>
+   </property>
+   <property name="text">
+    <string>About</string>
    </property>
   </action>
  </widget>
@@ -302,22 +342,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>action_test</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>on_test()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>361</x>
-     <y>380</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>btn_join_room</sender>
    <signal>clicked()</signal>
    <receiver>MainWindow</receiver>
@@ -333,6 +357,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>action_options</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>on_options_activated()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>361</x>
+     <y>380</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>login()</slot>
@@ -340,5 +380,6 @@
   <slot>submit_message()</slot>
   <slot>on_test()</slot>
   <slot>join_room()</slot>
+  <slot>on_options_activated()</slot>
  </slots>
 </ui>

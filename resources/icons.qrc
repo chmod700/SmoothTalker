@@ -3,5 +3,10 @@
         <file>img/icons/transmit.png</file>
         <file>img/icons/door_out.png</file>
         <file>img/icons/bell.png</file>
+        <file>img/icons/connect.png</file>
+        <file>img/icons/disconnect.png</file>
+        <file>img/icons/wrench.png</file>
+        <file>img/icons/information.png</file>
+        <file>img/icons/sound.png</file>
     </qresource>
 </RCC>

@@ -33,7 +33,9 @@ namespace Ui {
 // forward declarations
 class TalkerAccount;
 class TalkerRoom;
+struct TalkerUser;
 class CustomTabWidget;
+class OptionsDialog;
 
 /**
   * The core of the whole app. Handles choosing accounts, and showing of the
@@ -59,10 +61,10 @@ protected:
 private:
     Ui::MainWindow *ui;
     QSettings *m_settings; // manages app settings
-    QNetworkAccessManager *m_net; // handles web requests for us
     QLabel *m_status_lbl; // where status bar messages are written
     QMenu *m_tray_menu; // the context menu for right clicks on our tray icon
     QSystemTrayIcon *m_tray; // holds our handly little tray icon
+    OptionsDialog *m_options; // options dialog menu
 
     QList<TalkerAccount*> m_accounts; // list of configured accounts
     int m_connected_accounts; // holds how many accounts are logged in
@@ -76,16 +78,17 @@ private:
         void login();
         void logout();
         void submit_message();
-        void on_test(); // TODO: remove this silly method hooked up to the file
-                        // menu for on-demand testing
         void join_room();
         void update_rooms(const TalkerAccount&);
         void on_room_connected(const TalkerRoom*);
         void on_room_disconnected(const int room_id);
         void on_tab_switch(int new_idx);
         void on_tab_close(int tab_idx);
-        void on_message_received(const QString &sender, const QString &content, const TalkerRoom *room);
+        void on_message_received(const QString &sender, const QString &content,
+                                 const TalkerRoom *room);
         void on_users_updated(const TalkerRoom*);
+        void on_user_updated(const TalkerRoom*, const TalkerUser*);
+        void on_options_activated(); // user clicked options menu item
 
 
 };

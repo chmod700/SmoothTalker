@@ -22,6 +22,7 @@ THE SOFTWARE.
 */
 #include "main_window.h"
 #include "custom_tab_widget.h"
+#include "options_dialog.h"
 #include "ui_main_window.h"
 #include "ui_account_edit_dialog.h"
 #include "talker_account.h"
@@ -38,6 +39,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_status_lbl(new QLabel(this))
     , m_tray_menu(new QMenu(this))
     , m_tray(new QSystemTrayIcon(this))
+    , m_options(new OptionsDialog(this))
     , m_connected_accounts(0)
     , m_tabs(new CustomTabWidget(this))
     , m_tab_bar(new QTabBar(this))
@@ -114,6 +116,8 @@ void MainWindow::load_settings() {
     resize(m_settings->value("size", QSize(500, 600)).toSize());
     move(m_settings->value("pos", QPoint(200, 200)).toPoint());
     m_settings->endGroup();
+
+    m_options->load_settings(m_settings);
 }
 
 int MainWindow::load_accounts() {
@@ -246,17 +250,16 @@ void MainWindow::submit_message() {
     ui->le_chat_entry->setFocus();
 }
 
-void MainWindow::on_test() {
-    m_tray->showMessage("test1", "test2", QSystemTrayIcon::Warning, 10000);
-}
-
 void MainWindow::on_room_connected(const TalkerRoom *room) {
     m_connected_accounts++;
 
     connect(room, SIGNAL(message_received(QString,QString,const TalkerRoom*)),
-            SLOT(on_message_received(const QString&, const QString&, const TalkerRoom*)));
+            SLOT(on_message_received(const QString&, const QString&,
+                                     const TalkerRoom*)));
     connect(room, SIGNAL(users_updated(const TalkerRoom*)),
             SLOT(on_users_updated(const TalkerRoom*)));
+    connect(room, SIGNAL(user_updated(const TalkerRoom*, const TalkerUser*)),
+            SLOT(on_user_updated(const TalkerRoom*, const TalkerUser*)));
 
     // draw a tab for this dude.
     QWidget *w = room->get_widget();
@@ -279,24 +282,69 @@ void MainWindow::on_room_disconnected(const int room_id) {
     set_interface_enabled(m_connected_accounts);
 }
 
-void MainWindow::on_message_received(const QString &sender, const QString &content, const TalkerRoom *room) {
-    //qDebug() << "message received by room" << room << "from" << sender << "(" << content << ")";
+void MainWindow::on_message_received(const QString &sender,
+                                     const QString &content,
+                                     const TalkerRoom *room) {
+    //qDebug() << "message received by room" << room << "from"
+    //    << sender << "(" << content << ")";
+    QString path = m_settings->value("options/sound_files/message_received",
+                                     QString()).toString();
+    if (!path.isEmpty() && QFile::exists(path)) {
+        QSound::play(path);
+    }
+
     if (!isActiveWindow()) {
-        m_tray->showMessage(QString("message from %1").arg(sender), content, QSystemTrayIcon::Information, 2000);
+        m_tray->showMessage(QString("message from %1").arg(sender), content,
+                            QSystemTrayIcon::Information, 2000);
+        activateWindow();
     }
 }
 
 void MainWindow::on_users_updated(const TalkerRoom *room) {
-    QMap<int, TalkerUser> users = room->get_users();
+    int active_room_id = m_tab_bar->tabData(m_tabs->currentIndex()).toInt();
+    if (active_room_id != room->id()) {
+        return; // ignore this...
+    }
+    QMap<int, TalkerUser*> users = room->get_users();
 
     ui->tbl_users->clearContents();
     ui->tbl_users->setRowCount(users.count());
     int i = 0;
-    foreach(TalkerUser u, users.values()) {
-        QTableWidgetItem *name_item = new QTableWidgetItem(u.name);
-        name_item->setData(Qt::UserRole, u.id);
+    foreach(TalkerUser *u, users.values()) {
+        QTableWidgetItem *name_item = new QTableWidgetItem(u->name);
+        name_item->setData(Qt::UserRole, u->id);
+        if (!u->avatar.isNull()) {
+            name_item->setIcon(u->avatar);
+        }
         ui->tbl_users->setItem(i, 0, name_item);
         ++i;
+    }
+}
+
+void MainWindow::on_user_updated(const TalkerRoom *room,
+                                 const TalkerUser *user) {
+    qDebug() << "in mainwindow, got user_updated for" << user->name;
+    int active_room_id = m_tab_bar->tabData(m_tabs->currentIndex()).toInt();
+    if (active_room_id != room->id()) {
+        return; // ignore this...
+    }
+    bool found = false;
+    for (int i = 0; i < ui->tbl_users->rowCount(); ++i) {
+        QTableWidgetItem *item = ui->tbl_users->item(i, 0);
+        if (item->data(Qt::UserRole).toInt() == user->id) {
+            item->setText(user->name);
+            item->setIcon(user->avatar);
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        QTableWidgetItem *name_item = new QTableWidgetItem(user->name);
+        name_item->setData(Qt::UserRole, user->id);
+        if (!user->avatar.isNull()) {
+            name_item->setIcon(user->avatar);
+        }
+        ui->tbl_users->setItem(ui->tbl_users->rowCount(), 0, name_item);
     }
 }
 
@@ -317,5 +365,13 @@ void MainWindow::on_tab_switch(int new_idx) {
                 on_users_updated(r);
             }
         }
+    }
+}
+
+void MainWindow::on_options_activated() {
+    if (m_options->exec()) { // accepted
+        m_options->save_settings(m_settings);
+    } else { // cancel
+        m_options->load_settings(m_settings);
     }
 }

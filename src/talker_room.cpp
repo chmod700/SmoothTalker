@@ -33,11 +33,12 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     , m_acct(acct)
     , m_name(room_name)
     , m_ssl(new QSslSocket(this))
+    , m_net(new QNetworkAccessManager(this))
     , m_engine(new QScriptEngine(this))
     , m_timer(new QTimer(this))
     , m_chat(new QTableView(QObject::findChild<QMainWindow*>("MAINWINDOW")))
     , m_model(new QStandardItemModel(this))
-    , m_users(QMap<int, TalkerUser>())
+    , m_users(QMap<int, TalkerUser*>())
 {
     QSslConfiguration config = m_ssl->sslConfiguration();
     config.setProtocol(QSsl::TlsV1);
@@ -52,8 +53,9 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
             SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
 
-    m_model->setHeaderData(0, Qt::Horizontal, tr("User"));
-    m_model->setHeaderData(1, Qt::Horizontal, tr("Message"));
+    m_model->setHeaderData(0, Qt::Horizontal, tr("Time"));
+    m_model->setHeaderData(1, Qt::Horizontal, tr("User"));
+    m_model->setHeaderData(2, Qt::Horizontal, tr("Message"));
     m_chat->setModel(m_model);
     m_chat->horizontalHeader()->setStretchLastSection(true);
     //m_chat->horizontalHeader()->hide();
@@ -62,7 +64,15 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     m_chat->setWordWrap(true);
     m_chat->setShowGrid(false);
     m_chat->setAlternatingRowColors(true);
+    m_chat->setIconSize(QSize(24, 24));
     m_chat->setSelectionBehavior(QAbstractItemView::SelectRows);
+}
+
+TalkerRoom::~TalkerRoom() {
+    foreach(TalkerUser *u, m_users.values()) {
+        delete u;
+    }
+    m_users.clear();
 }
 
 void TalkerRoom::join_room() const {
@@ -71,15 +81,19 @@ void TalkerRoom::join_room() const {
 }
 
 void TalkerRoom::logout() {
+    /*
+      Stop sending the close message as this caused all clients logged into
+      this account to also log out.
+
+      See: https://talker.tenderapp.com/discussions/problems/33-bug-close-message-disconnects-all-clients-from-a-room
     qDebug() << this << "logging out";
     if (m_ssl->isEncrypted() && m_ssl->isWritable()) {
         m_ssl->write("{\"type\":\"close\"}\r\n");
         qDebug() << this << "sent close command";
     }
+    */
     m_ssl->flush();
-    qDebug() << this << "flushed";
     m_ssl->disconnectFromHost();
-    //m_ssl->abort();
 }
 
 void TalkerRoom::socket_encrypted() {
@@ -115,7 +129,7 @@ void TalkerRoom::socket_disconnected() {
 void TalkerRoom::socket_ready_read() {
     // get the server's reply
     QString reply = QString(m_ssl->readAll()).trimmed();
-    //qDebug() << QString("server said: (%1)").arg(reply);
+    qDebug() << QString("server said: (%1)").arg(reply);
 
 
     QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
@@ -127,7 +141,6 @@ void TalkerRoom::socket_ready_read() {
         logout();
         return;
     }
-    //qDebug() << "Evaluated response:" << val.toString();
 
     QString response_type = val.property("type").toString();
     //qDebug() << "RESPONSE DISPATCH:" << response_type;
@@ -138,32 +151,15 @@ void TalkerRoom::socket_ready_read() {
         m_timer->start();
         // m_status_lbl->setText(tr("Connected as %1").arg(user));
     } else if (response_type == "users") {
-        m_users.clear();
-        QScriptValue users_obj = val.property("users");
-        if (users_obj.isArray()) {
-            QScriptValueIterator it(users_obj);
-            int i = 0;
-            while(it.hasNext()) {
-                it.next();
-                QScriptValue user = it.value();
-                TalkerUser u;
-                u.name = user.property("name").toString().trimmed();
-                u.email = user.property("email").toString().trimmed();
-                u.id = user.property("id").toInteger();
-                m_users[u.id] = u;
-                //qDebug() << "user in room" << u.name << "email" << u.email << "id" << u.id;
-                i++;
-            }
-            emit users_updated(this);
-        }
+        handle_users(val);
+    } else if (response_type == "message") {
+        handle_message(val);
     } else if (response_type == "error") {
         QString msg = val.property("message").toString();
         qWarning() << "SERVER SENT ERROR:" << msg;
         QMessageBox::warning(NULL, tr("Server Error!"),
                              tr("Server sent the following error:\n\n%1")
                              .arg(msg));
-    } else if (response_type == "message") {
-        handle_message(val);
     } else {
         qDebug() << "unhandled message type" << response_type;
     }
@@ -176,7 +172,54 @@ void TalkerRoom::stay_alive() {
     }
 }
 
+void TalkerRoom::handle_users(const QScriptValue &val) {
+    // wipe our internal list
+    foreach(TalkerUser *u, m_users.values()) {
+        delete u;
+    }
+    m_users.clear();
+
+    QScriptValue users_obj = val.property("users");
+    if (users_obj.isArray()) {
+        QScriptValueIterator it(users_obj);
+        int i = 0;
+        while(it.hasNext()) {
+            it.next();
+            QScriptValue user = it.value();
+            TalkerUser *u = new TalkerUser();
+            u->name = user.property("name").toString().trimmed();
+            u->email = user.property("email").toString().trimmed();
+            u->id = user.property("id").toInteger();
+            m_users[u->id] = u;
+            //qDebug() << "user in room" << u.name << "email" << u.email
+            //  << "id" << u.id;
+
+            QCryptographicHash email_hash(QCryptographicHash::Md5);
+            email_hash.addData(u->email.toAscii());
+            QString hash(email_hash.result().toHex());
+            QString size("48"); // TODO: move this to options
+            QString default_type("identicon"); // TODO: move this to options
+            QUrl img_url(QString("http://www.gravatar.com/avatar/%1?s=%2&d=%3")
+                         .arg(hash)
+                         .arg(size)
+                         .arg(default_type));
+            qDebug() << "requesting image for" << u->name << "from"
+                    << img_url.toString();
+            QNetworkRequest req(img_url);
+            QNetworkReply *r = m_net->get(req);
+            m_avatar_requests.insert(r, u);
+
+            connect(m_net, SIGNAL(finished(QNetworkReply*)),
+                    SLOT(on_avatar_loaded(QNetworkReply*)));
+
+            i++;
+        }
+        emit users_updated(this);
+    }
+}
+
 void TalkerRoom::handle_message(const QScriptValue &val) {
+    // TODO, just use the user_id from the message, don't re-parse all this crap
     int time = val.property("time").toInt32();
     QString content = val.property("content").toString();
     QString sender = val.property("user").property("name").toString();
@@ -202,6 +245,10 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     } else {
         QStandardItem *i_sender = new QStandardItem(sender);
         i_sender->setData(sender_id, Qt::UserRole);
+        TalkerUser *u = m_users[sender_id];
+        if (!u->avatar.isNull()) {
+            i_sender->setIcon(u->avatar);
+        }
         QStandardItem *i_content = new QStandardItem(content);
         QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
         m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender << i_content);
@@ -225,6 +272,33 @@ void TalkerRoom::submit_message(const QString &msg) {
     } else {
         qWarning() << "tried to submit message to non-opened socket." << this;
     }
+}
+
+void TalkerRoom::on_avatar_loaded(QNetworkReply *r) {
+    if (!r || !m_avatar_requests.contains(r)) {
+        qWarning() << "unknown avatar request completed...";
+        return;
+    }
+    TalkerUser *u = m_avatar_requests.take(r);
+    if (u->name.isEmpty()){
+        qWarning() << "avatar request for user was lost!";
+        return;
+    }
+
+    /*
+    qDebug() << "avatar request for user" << u->name << "completed!";
+    foreach(QByteArray header, r->rawHeaderList()) {
+        qDebug() << "\t" << header << ":" << r->rawHeader(header);
+    }
+    */
+
+    QImage img = QImage::fromData(r->readAll(), r->rawHeader("Content-Type"));
+    QPixmap avatar = QPixmap::fromImage(img);
+    if (!avatar.isNull()) {
+        u->avatar = QIcon(avatar);
+        emit user_updated(this, u);
+    }
+    r->deleteLater();
 }
 
 QDebug operator<<(QDebug dbg, const TalkerRoom &r) {

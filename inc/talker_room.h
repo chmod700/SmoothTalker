@@ -33,6 +33,7 @@ struct TalkerUser {
     QString name;
     QString email;
     int id;
+    QIcon avatar;
 };
 
 class TalkerRoom : public QObject {
@@ -40,14 +41,14 @@ class TalkerRoom : public QObject {
 public:
     TalkerRoom(TalkerAccount *acct, const QString &room_name, const int id,
                QObject *parent = 0);
-    ~TalkerRoom() {}
+    ~TalkerRoom();
 
     int id() const {return m_id;}
     QString name() const {return m_name;}
     // create a socket to the given room and start chatting
     void join_room() const;
     QWidget *get_widget() const {return m_chat;}
-    QMap<int, TalkerUser> get_users() const {return m_users;}
+    QMap<int, TalkerUser*> get_users() const {return m_users;}
 
     public slots:
         void logout();
@@ -58,25 +59,32 @@ public:
         void socket_disconnected();
         void socket_state_changed(QAbstractSocket::SocketState);
 
+        void handle_users(const QScriptValue &val);
         void handle_message(const QScriptValue &val);
         void submit_message(const QString &msg);
+
+        void on_avatar_loaded(QNetworkReply*);
 
 private:
     int m_id; // id of the room
     TalkerAccount *m_acct; // the account that has access to this room
     QString m_name; // the name of the room
     QSslSocket *m_ssl; // used for messages
+    QNetworkAccessManager *m_net; // handles web requests for us
     QScriptEngine *m_engine; // used to parse JSON we get from the SSL sockets
     QTimer *m_timer; // used for keep-alives
     QTableView *m_chat; // shows messages
     QStandardItemModel *m_model; // stores messages
-    QMap<int, TalkerUser> m_users; // holds records of who is in room
+    QMap<int, TalkerUser*> m_users; // holds records of who is in room
+    QMap<QNetworkReply*, TalkerUser*> m_avatar_requests; // keep track of
+        // web requests for avatars
 
 signals:
     void connected(const TalkerRoom *room);
     void disconnected(TalkerRoom *room);
     void message_received(const QString &sender, const QString &content, const TalkerRoom *room);
     void users_updated(const TalkerRoom *room);
+    void user_updated(const TalkerRoom *room, const TalkerUser *user);
 };
 
 #endif // TALKERROOM_H
