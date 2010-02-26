@@ -272,6 +272,11 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
 
     int time = val.property("time").toInt32();
     QString content = val.property("content").toString();
+    content = content.replace("&lt;", "<", Qt::CaseInsensitive);
+    content = content.replace("&gt;", ">", Qt::CaseInsensitive);
+    content = content.replace("&quot;", "\"", Qt::CaseInsensitive);
+    content = content.replace("<br/>", "\n", Qt::CaseSensitive);
+
     QDateTime timestamp;
     timestamp.setTime_t(time);
 
@@ -384,9 +389,18 @@ void TalkerRoom::handle_leave(const QScriptValue &val) {
 }
 
 void TalkerRoom::submit_message(const QString &msg) {
+    if (msg.isEmpty()) {
+        return; // don't send blank messages
+    }
     if (m_ssl && m_ssl->isEncrypted()) {
-        QString body("{\"type\":\"message\",\"content\":\"%1\"}\r\n");
-        m_ssl->write(body.arg(msg).toAscii());
+        QString encoded = Qt::escape(msg);
+        encoded = encoded.replace("\r\n", "<br/>", Qt::CaseSensitive);
+        encoded = encoded.replace("\n", "<br/>", Qt::CaseSensitive);
+        encoded = encoded.replace("\r", "<br/>", Qt::CaseSensitive);
+        QString body = QString("{\"type\":\"message\",\"content\":\"%1\"}\r\n")
+                       .arg(encoded);
+        qDebug() << "\tSENDING:" << body.toAscii();
+        m_ssl->write(body.toAscii());
     } else {
         qWarning() << "tried to submit message to non-opened socket." << this;
     }

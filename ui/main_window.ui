@@ -95,7 +95,7 @@
      <height>21</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuFile">
+   <widget class="QMenu" name="menu_file">
     <property name="title">
      <string>File</string>
     </property>
@@ -105,17 +105,23 @@
     <addaction name="separator"/>
     <addaction name="action_exit"/>
    </widget>
-   <widget class="QMenu" name="menuHelp">
+   <widget class="QMenu" name="menu_help">
     <property name="title">
      <string>Help</string>
     </property>
     <addaction name="action_about"/>
    </widget>
-   <addaction name="menuFile"/>
-   <addaction name="menuHelp"/>
+   <widget class="QMenu" name="menu_view">
+    <property name="title">
+     <string>View</string>
+    </property>
+   </widget>
+   <addaction name="menu_file"/>
+   <addaction name="menu_view"/>
+   <addaction name="menu_help"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
-  <widget class="QDockWidget" name="dockWidget">
+  <widget class="QDockWidget" name="dock_user_list">
    <property name="windowTitle">
     <string>Users In Room</string>
    </property>
@@ -373,6 +379,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>action_about</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>on_about_activated()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>361</x>
+     <y>380</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>login()</slot>
@@ -381,5 +403,6 @@
   <slot>on_test()</slot>
   <slot>join_room()</slot>
   <slot>on_options_activated()</slot>
+  <slot>on_about_activated()</slot>
  </slots>
 </ui>

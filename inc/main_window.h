@@ -89,6 +89,7 @@ private:
         void on_users_updated(const TalkerRoom*);
         void on_user_updated(const TalkerRoom*, const TalkerUser*);
         void on_options_activated(); // user clicked options menu item
+        void on_about_activated(); // user clicked about menu item
 
         void status_message(const QString &msg);
 

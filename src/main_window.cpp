@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include "options_dialog.h"
 #include "ui_main_window.h"
 #include "ui_account_edit_dialog.h"
+#include "ui_about_dialog.h"
 #include "talker_account.h"
 #include "talker_room.h"
 #include <QtGui>
@@ -51,6 +52,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     // turn off the toolbar
     ui->toolBar->hide();
+    ui->toolBar->setEnabled(false);
+
+    // add dock to the menu
+    ui->menu_view->addAction(ui->dock_user_list->toggleViewAction());
 
     // put the tab widget into the main layout and hide it until we connect
     m_tabs->setVisible(false);
@@ -303,7 +308,8 @@ void MainWindow::on_message_received(const QString &sender,
     if (!isActiveWindow()) {
         m_tray->showMessage(QString("message from %1").arg(sender), content,
                             QSystemTrayIcon::Information, 2000);
-        activateWindow();
+        qApp->alert(this, 0);
+        //activateWindow();
     }
 }
 
@@ -394,6 +400,17 @@ void MainWindow::on_options_activated() {
     } else { // cancel
         m_options->load_settings(m_settings);
     }
+}
+
+void MainWindow::on_about_activated() {
+    QDialog *d = new QDialog(this);
+    Ui::AboutDialog *dui = new Ui::AboutDialog();
+    dui->setupUi(d);
+    dui->lbl_version->setText(tr("Version: %1")
+                              .arg(QCoreApplication::applicationVersion()));
+    d->exec();
+    delete dui;
+    d->deleteLater();
 }
 
 void MainWindow::status_message(const QString &msg) {

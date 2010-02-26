@@ -6,6 +6,7 @@ OptionsDialog::OptionsDialog(QWidget *parent)
     , ui(new Ui::OptionsDialog)
 {
     ui->setupUi(this);
+    ui->cb_message_limit->setEnabled(false); // TODO: allow setting of msg limit
 }
 
 OptionsDialog::~OptionsDialog() {
