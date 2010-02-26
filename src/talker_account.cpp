@@ -41,7 +41,8 @@ TalkerAccount::TalkerAccount(const QString &name, const QString &token,
     , m_engine(new QScriptEngine(this))
 {}
 
-TalkerAccount::~TalkerAccount() {}
+TalkerAccount::~TalkerAccount() {
+}
 
 void TalkerAccount::load_settings(QSettings &s) {
     m_name = s.value("name").toString();

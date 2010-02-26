@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include <QtNetwork>
 #include <QtScript>
 
+#include "main_window.h" // to get settings
 #include "talker_room.h"
 
 TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
@@ -31,15 +32,17 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     : QObject(parent)
     , m_id(id)
     , m_user_id(0)
+    , m_last_event_id(QString())
     , m_acct(acct)
     , m_name(room_name)
     , m_ssl(new QSslSocket(this))
     , m_net(new QNetworkAccessManager(this))
     , m_engine(new QScriptEngine(this))
     , m_timer(new QTimer(this))
-    , m_chat(new QTableView(QObject::findChild<QMainWindow*>("MAINWINDOW")))
+    , m_chat(new QTableView(0))
     , m_model(new QStandardItemModel(this))
     , m_users(QMap<int, TalkerUser*>())
+    , m_avatar_requests(QMap<QString, TalkerUser*>())
 {
     QSslConfiguration config = m_ssl->sslConfiguration();
     config.setProtocol(QSsl::TlsV1);
@@ -69,6 +72,9 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     m_chat->setAlternatingRowColors(true);
     m_chat->setIconSize(QSize(24, 24));
     m_chat->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_chat->setStyleSheet("QTableView {border: 1px solid red;}");
+
+    load();
 }
 
 TalkerRoom::~TalkerRoom() {
@@ -76,6 +82,28 @@ TalkerRoom::~TalkerRoom() {
         delete u;
     }
     m_users.clear();
+}
+
+void TalkerRoom::save() {
+    QSettings *s = new QSettings(QSettings::IniFormat, QSettings::UserScope,
+                                 QCoreApplication::organizationName(),
+                                 QCoreApplication::applicationName(), this);
+    s->beginGroup(QString("room_%1").arg(m_id));
+    s->setValue("id", m_id);
+    s->setValue("name", m_name);
+    s->setValue("last_event_id", m_last_event_id);
+    s->endGroup();
+    delete s;
+}
+
+void TalkerRoom::load() {
+    QSettings *s = new QSettings(QSettings::IniFormat, QSettings::UserScope,
+                                 QCoreApplication::organizationName(),
+                                 QCoreApplication::applicationName(), this);
+    s->beginGroup(QString("room_%1").arg(m_id));
+    m_last_event_id = s->value("last_event_id").toString();
+    s->endGroup();
+    delete s;
 }
 
 void TalkerRoom::join_room() const {
@@ -96,6 +124,7 @@ void TalkerRoom::logout() {
         qDebug() << this << "sent close command";
     }
     */
+    save();
     status_message(tr("disconnecting from server..."));
     m_ssl->flush();
     m_ssl->disconnectFromHost();
@@ -103,19 +132,28 @@ void TalkerRoom::logout() {
 
 void TalkerRoom::socket_encrypted() {
     // connection has been made successfully
-    //qDebug() << "socket encrypted";
+    qDebug() << "socket encrypted";
     status_message(tr("connection encrypted. logging in..."));
 
-    QString body("{\"type\":\"connect\",\"room\":\"%1\","
-                 "\"token\":\"%2\"}\r\n");
-    body = body.arg(m_name).arg(m_acct->token());
+    QString body;
+    if (!m_last_event_id.isEmpty()) {
+        qDebug() << "\tUSING LAST EVENT ID" << m_last_event_id;
+        body = "{\"type\":\"connect\","
+               "\"room\":\"%1\","
+               "\"token\":\"%2\","
+               "\"last_event_id\":\"%3\"}\r\n";
+        body = body.arg(m_name).arg(m_acct->token()).arg(m_last_event_id);
+    } else {
+        body = "{\"type\":\"connect\","
+               "\"room\":\"%1\","
+                "\"token\":\"%2\"}\r\n";
+        body = body.arg(m_name).arg(m_acct->token());
+    }
     m_ssl->write(body.toAscii());
     emit connected(this);
 
-
     // make our widget ready to rock...
     m_model->clear();
-    m_chat->setStyleSheet("QTableWidget {border: 1px solid red;}");
 }
 
 void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
@@ -131,6 +169,7 @@ void TalkerRoom::socket_disconnected() {
     status_message(tr("disconnected from server"));
     emit disconnected(this);
     m_timer->stop();
+    save();
 }
 
 void TalkerRoom::socket_ready_read() {
@@ -151,6 +190,9 @@ void TalkerRoom::socket_ready_read() {
     }
 
     QString response_type = val.property("type").toString();
+    if (!val.property("id").isNull()) {
+        m_last_event_id = val.property("id").toString();
+    }
     //qDebug() << "RESPONSE DISPATCH:" << response_type;
     if (response_type == "connected") {
         m_user_id = val.property("user").property("id").toInteger();
@@ -206,8 +248,7 @@ void TalkerRoom::handle_users(const QScriptValue &val) {
         while(it.hasNext()) {
             it.next();
             QScriptValue user = it.value();
-            TalkerUser *u = this->add_user(user);
-            m_users[u->id] = u;
+            add_user(user);
             i++;
         }
         emit users_updated(this);
@@ -219,9 +260,14 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
 
     TalkerUser *u = m_users[sender_id];
     if (!u) {
+        // chances are the server is catching us up on a big list of messages
+        // we missed, and we haven't gotten the user list for this room yet
+        // add this unknown user and then handle the message again...
         qWarning() << "received message from unknown user with id:"
                 << sender_id << "name:"
                 << val.property("user").property("name").toString();
+        add_user(val.property("user"));
+        handle_message(val);
         return;
     }
 
@@ -254,6 +300,7 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
             i_sender->setIcon(u->avatar);
         }
         QStandardItem *i_content = new QStandardItem(content);
+        i_content->setData(val.property("id").toString(), Qt::UserRole);
         QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
         m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender
                            << i_content);
@@ -316,7 +363,6 @@ void TalkerRoom::handle_join(const QScriptValue &val) {
         }
         system_message(timestamp.toString("h:mmap"),
                        QString("%1 has joined the room").arg(u->name));
-        m_users[u->id] = u;
         emit user_updated(this, u);
     } else {
         qWarning() << "got join event and had trouble adding the user";
@@ -348,28 +394,28 @@ void TalkerRoom::submit_message(const QString &msg) {
 }
 
 void TalkerRoom::on_avatar_loaded(QNetworkReply *r) {
-    if (!r || !m_avatar_requests.contains(r)) {
+    if (!r || !m_avatar_requests.contains(r->url().toString())) {
         qWarning() << "unknown avatar request completed...";
         return;
     }
-    TalkerUser *u = m_avatar_requests.take(r);
-    if (u->name.isEmpty()){
-        qWarning() << "avatar request for user was lost!";
-        return;
-    }
+    TalkerUser *u = m_avatar_requests.take(r->url().toString());
+    if (u) {
+        /*
+        qDebug() << "avatar request for user" << u->name << "completed!";
+        foreach(QByteArray header, r->rawHeaderList()) {
+            qDebug() << "\t" << header << ":" << r->rawHeader(header);
+        }
+        */
 
-    /*
-    qDebug() << "avatar request for user" << u->name << "completed!";
-    foreach(QByteArray header, r->rawHeaderList()) {
-        qDebug() << "\t" << header << ":" << r->rawHeader(header);
-    }
-    */
-
-    QImage img = QImage::fromData(r->readAll(), r->rawHeader("Content-Type"));
-    QPixmap avatar = QPixmap::fromImage(img);
-    if (!avatar.isNull()) {
-        u->avatar = QIcon(avatar);
-        emit user_updated(this, u);
+        QImage img = QImage::fromData(r->readAll(), r->rawHeader("Content-Type"));
+        QPixmap avatar = QPixmap::fromImage(img);
+        if (!avatar.isNull()) {
+            u->avatar = QIcon(avatar);
+            emit user_updated(this, u);
+        }
+    } else {
+        qWarning() << "avatar request for user was lost!"
+                << r->url().toString();
     }
     r->deleteLater();
 }
@@ -380,11 +426,17 @@ void TalkerRoom::on_options_changed(QSettings *s) {
 }
 
 TalkerUser *TalkerRoom::add_user(const QScriptValue &user) {
+    int user_id = user.property("id").toInteger();
+    if (m_users[user_id]) {
+        return m_users[user_id];
+    }
+
     TalkerUser *u = new TalkerUser();
     u->name = user.property("name").toString().trimmed();
     u->email = user.property("email").toString().trimmed();
-    u->id = user.property("id").toInteger();
+    u->id = user_id;
     u->idle = false;
+    m_users[u->id] = u;
 
     qDebug() << "new user" << u->name << "email" << u->email << "id" << u->id;
 
@@ -402,7 +454,8 @@ TalkerUser *TalkerRoom::add_user(const QScriptValue &user) {
             << img_url.toString();
     QNetworkRequest req(img_url);
     QNetworkReply *r = m_net->get(req);
-    m_avatar_requests.insert(r, u);
+    Q_UNUSED(r);
+    m_avatar_requests.insert(img_url.toString(), u);
     return u;
 }
 

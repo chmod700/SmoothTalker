@@ -47,7 +47,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     // give the mainwindow a unique name so other classes can find it
-    this->setObjectName("MAINWINDOW");
+    setObjectName("MAINWINDOW");
 
     // turn off the toolbar
     ui->toolBar->hide();
@@ -103,6 +103,7 @@ void MainWindow::save_settings() {
     m_settings->beginGroup("geometry");
     m_settings->setValue("size", size());
     m_settings->setValue("pos", pos());
+    m_settings->setValue("state", saveState());
     m_settings->endGroup();
     save_accounts();
 }
@@ -111,6 +112,7 @@ void MainWindow::load_settings() {
     m_settings->beginGroup("geometry");
     resize(m_settings->value("size", QSize(500, 600)).toSize());
     move(m_settings->value("pos", QPoint(200, 200)).toPoint());
+    restoreState(m_settings->value("state").toByteArray());
     m_settings->endGroup();
 
     m_options->load_settings(m_settings);
@@ -267,6 +269,7 @@ void MainWindow::on_room_connected(const TalkerRoom *room) {
     // draw a tab for this dude.
     QWidget *w = room->get_widget();
     m_tabs->addTab(w, room->name());
+    //w->setParent(m_tabs);
     m_tab_bar->setTabData(m_tabs->indexOf(w), room->id());
     set_interface_enabled(m_connected_accounts);
 }
@@ -321,7 +324,7 @@ void MainWindow::on_users_updated(const TalkerRoom *room) {
 
 void MainWindow::on_user_updated(const TalkerRoom *room,
                                  const TalkerUser *user) {
-    qDebug() << "in mainwindow, got user_updated for" << user->name;
+    //qDebug() << "in mainwindow, got user_updated for" << user->name;
     int active_room_id = m_tab_bar->tabData(m_tabs->currentIndex()).toInt();
     if (active_room_id != room->id()) {
         return; // ignore this...

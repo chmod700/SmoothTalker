@@ -30,6 +30,14 @@ THE SOFTWARE.
 #include "talker_account.h"
 
 struct TalkerUser {
+    TalkerUser()
+        : name(QString())
+        , email(QString())
+        , id(-1)
+        , avatar(QIcon())
+        , idle(false)
+    {}
+
     QString name;
     QString email;
     int id;
@@ -42,7 +50,7 @@ class TalkerRoom : public QObject {
 public:
     TalkerRoom(TalkerAccount *acct, const QString &room_name, const int id,
                QObject *parent = 0);
-    ~TalkerRoom();
+    virtual ~TalkerRoom();
 
     int id() const {return m_id;}
     QString name() const {return m_name;}
@@ -50,6 +58,9 @@ public:
     void join_room() const;
     QWidget *get_widget() const {return m_chat;}
     QMap<int, TalkerUser*> get_users() const {return m_users;}
+
+    void save();
+    void load();
 
     public slots:
         void logout();
@@ -76,6 +87,7 @@ public:
 private:
     int m_id; // id of the room
     int m_user_id; // our user id we logged in with
+    QString m_last_event_id; // the id of the last item we got from the server
     TalkerAccount *m_acct; // the account that has access to this room
     QString m_name; // the name of the room
     QSslSocket *m_ssl; // used for messages
@@ -85,8 +97,8 @@ private:
     QTableView *m_chat; // shows messages
     QStandardItemModel *m_model; // stores messages
     QMap<int, TalkerUser*> m_users; // holds records of who is in room
-    QMap<QNetworkReply*, TalkerUser*> m_avatar_requests; // keep track of
-        // web requests for avatars
+    QMap<QString, TalkerUser*> m_avatar_requests; // keep track of
+        // web requests for avatars (url to user)
 
     TalkerUser *add_user(const QScriptValue &user);
     QDateTime time_from_message(const QScriptValue &val);

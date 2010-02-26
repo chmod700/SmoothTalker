@@ -26,6 +26,14 @@ void OptionsDialog::changeEvent(QEvent *e) {
 void OptionsDialog::save_settings(QSettings *s) {
     s->beginGroup("options");
     s->setValue("show_timestamps", ui->cb_show_timestamps->isChecked());
+    QString keep = ui->cb_message_limit->currentText();
+    bool limited = false;
+    int to_keep = keep.toInt(&limited, 10);
+    if (limited) {
+        s->setValue("total_messages_per_room", to_keep);
+    } else {
+        s->setValue("total_messages_per_room", 0);
+    }
 
     s->beginGroup("sound_files");
     s->setValue("message_received", ui->le_sound_msg_received->text());
