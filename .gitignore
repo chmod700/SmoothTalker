@@ -2,6 +2,7 @@
 bin/debug/*
 bin/release/*
 bin/temp/*
+bin/SmoothTalker*
 
 # icons not explicity added
 resources/img/icons/*
@@ -11,3 +12,5 @@ Makefile
 Makefile.Debug
 Makefile.Release
 SmoothTalker.pro.user
+object_script.SmoothTalker.Debug
+object_script.SmoothTalker.Release
