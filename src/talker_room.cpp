@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 #include "main_window.h" // to get settings
 #include "talker_room.h"
+#include "talker_user.h"
 
 TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
                        const int id, QObject *parent)
@@ -42,8 +43,9 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     , m_chat(new QTableView(0))
     , m_model(new QStandardItemModel(this))
     , m_users(QMap<int, TalkerUser*>())
-    , m_avatar_requests(QMap<QString, TalkerUser*>())
 {
+    m_users.clear();
+
     QSslConfiguration config = m_ssl->sslConfiguration();
     config.setProtocol(QSsl::TlsV1);
     m_ssl->setSslConfiguration(config);
@@ -56,8 +58,6 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     connect(m_ssl, SIGNAL(stateChanged(QAbstractSocket::SocketState)),
             SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
-    connect(m_net, SIGNAL(finished(QNetworkReply*)),
-            SLOT(on_avatar_loaded(QNetworkReply*)));
 
     m_chat->horizontalHeader()->setStretchLastSection(true);
     m_chat->horizontalHeader()->show();
@@ -70,6 +70,7 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     m_chat->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_chat->setStyleSheet("QTableView {border: 0px;}");
     m_chat->setModel(m_model);
+    m_chat->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     load();
 }
 
@@ -174,7 +175,7 @@ void TalkerRoom::socket_disconnected() {
 void TalkerRoom::socket_ready_read() {
     // get the server's reply
     QString reply = QString(m_ssl->readAll()).trimmed();
-    qDebug() << QString("server said: (%1)").arg(reply);
+    //qDebug() << QString("server said: (%1)").arg(reply);
 
 
     QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
@@ -258,7 +259,7 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     int sender_id = val.property("user").property("id").toInteger();
 
     TalkerUser *u = m_users[sender_id];
-    if (!u) {
+    if (!u || !u->valid()) {
         // chances are the server is catching us up on a big list of messages
         // we missed, and we haven't gotten the user list for this room yet
         // add this unknown user and then handle the message again...
@@ -280,8 +281,8 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     QDateTime timestamp;
     timestamp.setTime_t(time);
 
-    qDebug() << "got message from:" << m_users[sender_id]->name
-            << "MSG:" << content;
+    //qDebug() << "got message from:" << m_users[sender_id]->name
+    //        << "MSG:" << content;
 
     // is this another message from the same user who sent the last message?
     QModelIndex last_msg = m_model->index(m_model->rowCount()-1, 1);
@@ -316,7 +317,15 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
     m_chat->resizeColumnToContents(0);
     m_chat->resizeColumnToContents(1);
     m_chat->resizeRowsToContents();
-    m_chat->scrollToBottom();
+
+    /* Next 3 lines are an attempted workaround for scrolling bug
+       sometimes when a chat comes in from the same person and adds to an
+       existing chat line in the GUI, it fails to scroll all the way down.
+       This attempts to let the gui re-layout itself before calling scroll
+       */
+    qApp->sendPostedEvents();
+    qApp->processEvents();
+    QTimer::singleShot(100, m_chat, SLOT(scrollToBottom()));
 
     emit message_received(u->name, content, this);
 }
@@ -399,43 +408,20 @@ void TalkerRoom::submit_message(const QString &msg) {
         encoded = encoded.replace("\r", "<br/>", Qt::CaseSensitive);
         QString body = QString("{\"type\":\"message\",\"content\":\"%1\"}\r\n")
                        .arg(encoded);
-        qDebug() << "\tSENDING:" << body.toAscii();
+        //qDebug() << "\tSENDING:" << body.toAscii();
         m_ssl->write(body.toAscii());
     } else {
         qWarning() << "tried to submit message to non-opened socket." << this;
     }
 }
 
-void TalkerRoom::on_avatar_loaded(QNetworkReply *r) {
-    if (!r || !m_avatar_requests.contains(r->url().toString())) {
-        qWarning() << "unknown avatar request completed...";
-        return;
-    }
-    TalkerUser *u = m_avatar_requests.take(r->url().toString());
-    if (u) {
-        /*
-        qDebug() << "avatar request for user" << u->name << "completed!";
-        foreach(QByteArray header, r->rawHeaderList()) {
-            qDebug() << "\t" << header << ":" << r->rawHeader(header);
-        }
-        */
-
-        QImage img = QImage::fromData(r->readAll(), r->rawHeader("Content-Type"));
-        QPixmap avatar = QPixmap::fromImage(img);
-        if (!avatar.isNull()) {
-            u->avatar = QIcon(avatar);
-            emit user_updated(this, u);
-        }
-    } else {
-        qWarning() << "avatar request for user was lost!"
-                << r->url().toString();
-    }
-    r->deleteLater();
-}
-
 void TalkerRoom::on_options_changed(QSettings *s) {
     m_chat->setColumnHidden(0, !s->value("options/show_timestamps", true)
                             .toBool());
+}
+
+void TalkerRoom::on_user_updated(const TalkerUser *user) {
+    emit user_updated(this, user);
 }
 
 TalkerUser *TalkerRoom::add_user(const QScriptValue &user) {
@@ -444,31 +430,13 @@ TalkerUser *TalkerRoom::add_user(const QScriptValue &user) {
         return m_users[user_id];
     }
 
-    TalkerUser *u = new TalkerUser();
-    u->name = user.property("name").toString().trimmed();
-    u->email = user.property("email").toString().trimmed();
-    u->id = user_id;
-    u->idle = false;
+    TalkerUser *u = new TalkerUser(user.property("name").toString().trimmed(),
+                                   user.property("email").toString().trimmed(),
+                                   user_id, this);
     m_users[u->id] = u;
-
-    qDebug() << "new user" << u->name << "email" << u->email << "id" << u->id;
-
-    QCryptographicHash email_hash(QCryptographicHash::Md5);
-    email_hash.addData(u->email.toAscii());
-    QString hash(email_hash.result().toHex());
-    QString size("48"); // TODO: move this to options
-    //QString default_type("identicon"); // TODO: move this to options
-    QString default_type("wavatar"); // TODO: move this to options
-    QUrl img_url(QString("http://www.gravatar.com/avatar/%1?s=%2&d=%3")
-                 .arg(hash)
-                 .arg(size)
-                 .arg(default_type));
-    qDebug() << "requesting image for" << u->name << "from"
-            << img_url.toString();
-    QNetworkRequest req(img_url);
-    QNetworkReply *r = m_net->get(req);
-    Q_UNUSED(r);
-    m_avatar_requests.insert(img_url.toString(), u);
+    u->request_avatar(m_net);
+    connect(u, SIGNAL(updated(const TalkerUser*)),
+            SLOT(on_user_updated(const TalkerUser*)));
     return u;
 }
 

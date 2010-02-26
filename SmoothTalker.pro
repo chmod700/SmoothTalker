@@ -29,13 +29,15 @@ SOURCES += main.cpp \
     main_window.cpp \
     talker_account.cpp \
     talker_room.cpp \
-    src/options_dialog.cpp
+    src/options_dialog.cpp \
+    src/talker_user.cpp
 HEADERS += main_window.h \
     talker_account.h \
     talker_room.h \
     inc/custom_tab_widget.h \
     inc/options_dialog.h \
-    inc/defines.h
+    inc/defines.h \
+    inc/talker_user.h
 FORMS += main_window.ui \
     account_edit_dialog.ui \
     ui/options_dialog.ui \

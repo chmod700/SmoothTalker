@@ -28,8 +28,40 @@
        <layout class="QVBoxLayout" name="verticalLayout">
         <item>
          <widget class="QCheckBox" name="cb_show_timestamps">
+          <property name="toolTip">
+           <string>Toggles showing the time of each message in the main chat view.</string>
+          </property>
+          <property name="statusTip">
+           <string>Toggles showing the time of each message in the main chat view.</string>
+          </property>
           <property name="text">
            <string>Show Timestamps of Received Messages</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="cb_flash">
+          <property name="toolTip">
+           <string>When SmoothTalker is minimized or not the active window and you receive a message, this option will cause the taskbar to flash and show the message in the tray icon.</string>
+          </property>
+          <property name="statusTip">
+           <string>When SmoothTalker is minimized or not the active window and you receive a message, this option will cause the taskbar to flash and show the message in the tray icon.</string>
+          </property>
+          <property name="text">
+           <string>Flash Taskbar on incoming messages when SmoothTalker is minimized</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="cb_auto_join">
+          <property name="toolTip">
+           <string>When checked, SmoothTalker will re-join any rooms that were open in the last session.</string>
+          </property>
+          <property name="statusTip">
+           <string>When checked, SmoothTalker will re-join any rooms that were open in the last session.</string>
+          </property>
+          <property name="text">
+           <string>On startup join the rooms I had open last time</string>
           </property>
          </widget>
         </item>
@@ -97,7 +129,7 @@
           <item>
            <widget class="QLabel" name="lbl_sound_msg_received">
             <property name="toolTip">
-             <string>Choose a wave file to play when messages are received</string>
+             <string>Choose a wave file to play when messages are received. Leave blank for no sound.</string>
             </property>
             <property name="text">
              <string>Message Received</string>
@@ -108,10 +140,17 @@
            </widget>
           </item>
           <item>
-           <widget class="QLineEdit" name="le_sound_msg_received"/>
+           <widget class="QLineEdit" name="le_sound_msg_received">
+            <property name="toolTip">
+             <string>Choose a wave file to play when messages are received. Leave blank for no sound.</string>
+            </property>
+           </widget>
           </item>
           <item>
            <widget class="QPushButton" name="btn_sound_msg_received">
+            <property name="toolTip">
+             <string>Choose a wave file to play when messages are received. Leave blank for no sound.</string>
+            </property>
             <property name="text">
              <string>Choose File...</string>
             </property>
@@ -119,6 +158,9 @@
           </item>
           <item>
            <widget class="QPushButton" name="btn_test_sound_msg_received">
+            <property name="toolTip">
+             <string>Test the sound.</string>
+            </property>
             <property name="text">
              <string/>
             </property>

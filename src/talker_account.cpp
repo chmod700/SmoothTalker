@@ -109,7 +109,6 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
     // looks something like this...
     // [{"name": "Main", "id": 497}, {"name": "Second Room", "id": 512}]
 
-    //qDebug() << "SERVER SAID:" << reply;
     if (r->error() == QNetworkReply::NoError) { // YAY!
         QScriptValue val = m_engine->evaluate(QString("(%1)").arg(reply));
         if (m_engine->hasUncaughtException()) {
@@ -133,6 +132,14 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
                 m_avail_rooms.insert(room_name, room_id);
             }
 
+            QSettings *s = new QSettings(QSettings::IniFormat,
+                                         QSettings::UserScope,
+                                         QApplication::organizationName(),
+                                         QApplication::applicationName(),
+                                         this);
+            bool auto_join = s->value("options/reopen_last_session_rooms",
+                                      true).toBool();
+
             if (m_open_rooms.size() < 1) { // never opened any rooms here?
                 QString to_join = QInputDialog::getItem(
                         NULL, tr("Choose which room to join"),
@@ -142,9 +149,12 @@ void TalkerAccount::rooms_request_finished(QNetworkReply *r) {
                 }
             } else {
                 // restore all open rooms if they still exist...
-                foreach(QString name, m_open_rooms.keys()) {
-                    if (m_avail_rooms.contains(name) && m_avail_rooms[name] == m_open_rooms[name].toInt()) {
-                        open_room(m_avail_rooms[name]);
+                if (auto_join) {
+                    foreach(QString name, m_open_rooms.keys()) {
+                        if (m_avail_rooms.contains(name) &&
+                            m_avail_rooms[name] == m_open_rooms[name].toInt()) {
+                            open_room(m_avail_rooms[name]);
+                        }
                     }
                 }
             }

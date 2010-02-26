@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include "ui_about_dialog.h"
 #include "talker_account.h"
 #include "talker_room.h"
+#include "talker_user.h"
 #include <QtGui>
 #include <QtNetwork>
 
@@ -174,6 +175,8 @@ void MainWindow::update_rooms(const TalkerAccount &acct) {
         ui->cb_rooms->addItem(QString("%1::%2").arg(acct.name()).arg(name),
                               acct.avail_rooms()[name]);
     }
+    ui->cb_rooms->setEnabled(ui->cb_rooms->count());
+    ui->btn_join_room->setEnabled(ui->cb_rooms->count());
 }
 
 void MainWindow::join_room() {
@@ -297,19 +300,18 @@ void MainWindow::on_room_disconnected(const int room_id) {
 void MainWindow::on_message_received(const QString &sender,
                                      const QString &content,
                                      const TalkerRoom *room) {
-    //qDebug() << "message received by room" << room << "from"
-    //    << sender << "(" << content << ")";
     QString path = m_settings->value("options/sound_files/message_received",
                                      QString()).toString();
     if (!path.isEmpty() && QFile::exists(path)) {
         QSound::play(path);
     }
 
-    if (!isActiveWindow()) {
+    bool flash = m_settings->value("options/flash_when_not_active",
+                                   true).toBool();
+    if (isMinimized() && flash) {
         m_tray->showMessage(QString("message from %1").arg(sender), content,
                             QSystemTrayIcon::Information, 2000);
         qApp->alert(this, 0);
-        //activateWindow();
     }
 }
 

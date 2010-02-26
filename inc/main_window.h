@@ -33,7 +33,7 @@ namespace Ui {
 // forward declarations
 class TalkerAccount;
 class TalkerRoom;
-struct TalkerUser;
+class TalkerUser;
 class CustomTabWidget;
 class OptionsDialog;
 

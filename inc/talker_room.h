@@ -29,21 +29,7 @@ THE SOFTWARE.
 
 #include "talker_account.h"
 
-struct TalkerUser {
-    TalkerUser()
-        : name(QString())
-        , email(QString())
-        , id(-1)
-        , avatar(QIcon())
-        , idle(false)
-    {}
-
-    QString name;
-    QString email;
-    int id;
-    QIcon avatar;
-    bool idle;
-};
+class TalkerUser;
 
 class TalkerRoom : public QObject {
     Q_OBJECT
@@ -79,8 +65,8 @@ public:
         void handle_leave(const QScriptValue &val);
         void submit_message(const QString &msg);
 
-        void on_avatar_loaded(QNetworkReply*);
         void on_options_changed(QSettings*);
+        void on_user_updated(const TalkerUser *user);
 
         void system_message(const QString &time, const QString &message);
 
@@ -97,8 +83,6 @@ private:
     QTableView *m_chat; // shows messages
     QStandardItemModel *m_model; // stores messages
     QMap<int, TalkerUser*> m_users; // holds records of who is in room
-    QMap<QString, TalkerUser*> m_avatar_requests; // keep track of
-        // web requests for avatars (url to user)
 
     TalkerUser *add_user(const QScriptValue &user);
     QDateTime time_from_message(const QScriptValue &val);

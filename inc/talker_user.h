@@ -20,25 +20,39 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-#ifndef CUSTOM_TAB_WIDGET_H
-#define CUSTOM_TAB_WIDGET_H
+#ifndef TALKER_USER_H
+#define TALKER_USER_H
 
-#include <QtGui>
+#include <QObject>
+#include <QIcon>
 
-/**
-  * Needed so we can set QVariant data on each tab
-  */
-class CustomTabWidget: public QTabWidget {
-    Q_OBJECT
+class QNetworkAccessManager;
+
+class TalkerUser : public QObject
+{
+Q_OBJECT
 public:
-    CustomTabWidget(QWidget *parent = 0)
-        : QTabWidget(parent)
-    {}
-    virtual ~CustomTabWidget(){}
+    explicit TalkerUser(const QString &name, const QString &email,
+                        const int &id, QObject *parent = 0);
+    virtual ~TalkerUser(){}
 
-    void setTabBar(QTabBar *tb) {
-        QTabWidget::setTabBar(tb);
-    }
+    QString name;
+    QString email;
+    int id;
+    QIcon avatar;
+    bool idle;
+
+    bool valid() const {return id != -1;}
+
+public slots:
+    void request_avatar(QNetworkAccessManager *net); // get avatar from web
+    void on_avatar_loaded(); // when an avatar is finished loading
+
+private:
+    bool avatar_requested;
+
+signals:
+    void updated(const TalkerUser*);
 };
 
-#endif // CUSTOM_TAB_WIDGET_H
+#endif // TALKER_USER_H
