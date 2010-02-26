@@ -56,7 +56,7 @@ public:
     QString name() const {return m_name;}
     // create a socket to the given room and start chatting
     void join_room() const;
-    QWidget *get_widget() const {return m_chat;}
+    QTableView *get_widget() const {return m_chat;}
     QMap<int, TalkerUser*> get_users() const {return m_users;}
 
     void save();

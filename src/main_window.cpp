@@ -56,6 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabs->setVisible(false);
     m_tabs->setTabBar(m_tab_bar);
     m_tabs->setTabsClosable(true);
+    m_tabs->setMovable(true);
     m_tabs->setTabPosition(QTabWidget::South);
     connect(m_tabs, SIGNAL(tabCloseRequested(int)), SLOT(on_tab_close(int)));
     connect(m_tabs, SIGNAL(currentChanged(int)), SLOT(on_tab_switch(int)));
@@ -267,9 +268,9 @@ void MainWindow::on_room_connected(const TalkerRoom *room) {
     emit options_changed(m_settings); // to propogate to this new room
 
     // draw a tab for this dude.
-    QWidget *w = room->get_widget();
+    //QWidget *w = room->get_widget();
+    QTableView *w = room->get_widget();
     m_tabs->addTab(w, room->name());
-    //w->setParent(m_tabs);
     m_tab_bar->setTabData(m_tabs->indexOf(w), room->id());
     set_interface_enabled(m_connected_accounts);
 }

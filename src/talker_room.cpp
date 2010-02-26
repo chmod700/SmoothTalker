@@ -59,12 +59,8 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     connect(m_net, SIGNAL(finished(QNetworkReply*)),
             SLOT(on_avatar_loaded(QNetworkReply*)));
 
-    m_model->setHeaderData(0, Qt::Horizontal, tr("Time"));
-    m_model->setHeaderData(1, Qt::Horizontal, tr("User"));
-    m_model->setHeaderData(2, Qt::Horizontal, tr("Message"));
-    m_chat->setModel(m_model);
     m_chat->horizontalHeader()->setStretchLastSection(true);
-    //m_chat->horizontalHeader()->hide();
+    m_chat->horizontalHeader()->show();
     m_chat->verticalHeader()->hide();
     m_chat->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_chat->setWordWrap(true);
@@ -72,8 +68,8 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     m_chat->setAlternatingRowColors(true);
     m_chat->setIconSize(QSize(24, 24));
     m_chat->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_chat->setStyleSheet("QTableView {border: 1px solid red;}");
-
+    m_chat->setStyleSheet("QTableView {border: 0px;}");
+    m_chat->setModel(m_model);
     load();
 }
 
@@ -154,6 +150,9 @@ void TalkerRoom::socket_encrypted() {
 
     // make our widget ready to rock...
     m_model->clear();
+    QStringList labels;
+    labels << tr("Time") << tr("User") << tr("Message");
+    m_model->setHorizontalHeaderLabels(labels);
 }
 
 void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
