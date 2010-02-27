@@ -3,7 +3,8 @@
 # -------------------------------------------------
 # QT libs we need
 QT += network \
-    script
+    script \
+    webkit
 
 # basic app config
 TARGET = SmoothTalker
@@ -43,3 +44,4 @@ FORMS += main_window.ui \
     ui/options_dialog.ui \
     ui/about_dialog.ui
 RESOURCES += icons.qrc
+OTHER_FILES += 

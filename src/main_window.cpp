@@ -276,9 +276,9 @@ void MainWindow::on_room_connected(const TalkerRoom *room) {
     emit options_changed(m_settings); // to propogate to this new room
 
     // draw a tab for this dude.
-    //QWidget *w = room->get_widget();
-    QTableView *w = room->get_widget();
+    QWidget *w = room->get_widget();
     m_tabs->addTab(w, room->name());
+    w->show();
     m_tab_bar->setTabData(m_tabs->indexOf(w), room->id());
     set_interface_enabled(m_connected_accounts);
 }

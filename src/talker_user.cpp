@@ -32,27 +32,34 @@ TalkerUser::TalkerUser(const QString &name, const QString &email,
     , avatar(QIcon())
     , idle(false)
     , avatar_requested(false)
+    , m_avatar_url(QUrl())
 {
     qDebug() << "new user" << name << "email" << email << "id" << id;
+}
+
+QUrl TalkerUser::avatar_url() {
+    if (!m_avatar_url.isValid()) {
+        QCryptographicHash email_hash(QCryptographicHash::Md5);
+        email_hash.addData(email.toAscii());
+        QString hash(email_hash.result().toHex());
+
+        // optional settings for avatar
+        QString size("48"); // TODO: move this to options
+        //QString default_type("identicon"); // TODO: move this to options
+        QString default_type("wavatar"); // TODO: move this to options
+
+        // TODO: move avatar url to defines...
+        m_avatar_url = QUrl(
+                QString("http://www.gravatar.com/avatar/%1?s=%2&d=%3")
+                    .arg(hash).arg(size).arg(default_type));
+    }
+    return m_avatar_url;
 }
 
 void TalkerUser::request_avatar(QNetworkAccessManager *net) {
     if (avatar_requested) // we already sent a request...
         return;
-    QCryptographicHash email_hash(QCryptographicHash::Md5);
-    email_hash.addData(email.toAscii());
-    QString hash(email_hash.result().toHex());
-
-    // optional settings for avatar
-    QString size("48"); // TODO: move this to options
-    //QString default_type("identicon"); // TODO: move this to options
-    QString default_type("wavatar"); // TODO: move this to options
-
-    // TODO: move avatar url to defines...
-    QUrl url(QString("http://www.gravatar.com/avatar/%1?s=%2&d=%3").arg(hash)
-             .arg(size)
-             .arg(default_type));
-
+    QUrl url = avatar_url();
     qDebug() << "requesting image for" << name << "from" << url.toString();
     QNetworkRequest req(url);
     QNetworkReply *r = net->get(req);

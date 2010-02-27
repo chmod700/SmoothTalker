@@ -25,8 +25,7 @@ THE SOFTWARE.
 
 #include <QObject>
 #include <QIcon>
-
-class QNetworkAccessManager;
+#include <QtNetwork>
 
 class TalkerUser : public QObject
 {
@@ -43,6 +42,7 @@ public:
     bool idle;
 
     bool valid() const {return id != -1;}
+    QUrl avatar_url();
 
 public slots:
     void request_avatar(QNetworkAccessManager *net); // get avatar from web
@@ -50,6 +50,7 @@ public slots:
 
 private:
     bool avatar_requested;
+    QUrl m_avatar_url;
 
 signals:
     void updated(const TalkerUser*);

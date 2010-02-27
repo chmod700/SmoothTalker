@@ -8,5 +8,6 @@
         <file>img/icons/wrench.png</file>
         <file>img/icons/information.png</file>
         <file>img/icons/sound.png</file>
+        <file>templates/message.txt</file>
     </qresource>
 </RCC>

@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <QtGui>
 #include <QtNetwork>
 #include <QtScript>
+#include <QtWebKit>
 
 #include "main_window.h" // to get settings
 #include "talker_room.h"
@@ -40,8 +41,8 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
     , m_net(new QNetworkAccessManager(this))
     , m_engine(new QScriptEngine(this))
     , m_timer(new QTimer(this))
-    , m_chat(new QTableView(0))
-    , m_model(new QStandardItemModel(this))
+    , m_chat(new QWebView(0))
+    , m_html(new QTemporaryFile(this))
     , m_users(QMap<int, TalkerUser*>())
 {
     m_users.clear();
@@ -59,18 +60,10 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
             SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
 
-    m_chat->horizontalHeader()->setStretchLastSection(true);
-    m_chat->horizontalHeader()->show();
-    m_chat->verticalHeader()->hide();
-    m_chat->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_chat->setWordWrap(true);
-    m_chat->setShowGrid(false);
-    m_chat->setAlternatingRowColors(true);
-    m_chat->setIconSize(QSize(24, 24));
-    m_chat->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_chat->setStyleSheet("QTableView {border: 0px;}");
-    m_chat->setModel(m_model);
-    m_chat->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    m_html->open();
+    m_html->write(QString("<table>").toUtf8());
+    m_chat->setStyleSheet("div {border: 1px solid red;}");
+
     load();
 }
 
@@ -148,12 +141,6 @@ void TalkerRoom::socket_encrypted() {
     }
     m_ssl->write(body.toAscii());
     emit connected(this);
-
-    // make our widget ready to rock...
-    m_model->clear();
-    QStringList labels;
-    labels << tr("Time") << tr("User") << tr("Message");
-    m_model->setHorizontalHeaderLabels(labels);
 }
 
 void TalkerRoom::socket_ssl_errors(const QList<QSslError> &errors) {
@@ -273,6 +260,7 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
 
     int time = val.property("time").toInt32();
     QString content = val.property("content").toString();
+    /*
     content = content.replace("&lt;", "<", Qt::CaseInsensitive);
     content = content.replace("&gt;", ">", Qt::CaseInsensitive);
     content = content.replace("&quot;", "\"", Qt::CaseInsensitive);
@@ -280,53 +268,31 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
 
     QDateTime timestamp;
     timestamp.setTime_t(time);
+    */
 
     //qDebug() << "got message from:" << m_users[sender_id]->name
     //        << "MSG:" << content;
 
-    // is this another message from the same user who sent the last message?
-    QModelIndex last_msg = m_model->index(m_model->rowCount()-1, 1);
-    bool append_mode = false;
-    int last_sender_id = -1;
-    if (last_msg.isValid()) {
-        last_sender_id = m_model->data(last_msg, Qt::UserRole).toInt();
-        if (sender_id == last_sender_id) {
-            append_mode = true;
-        }
-    }
+    //timestamp.toString("h:mmap")
 
-    if (append_mode) {
-        QStandardItem *last_msg = m_model->item(m_model->rowCount()-1, 2);
-        last_msg->setText(QString("%1\n%2").arg(last_msg->text()).arg(content));
-    } else {
-        QStandardItem *i_sender = new QStandardItem(u->name);
-        i_sender->setData(u->id, Qt::UserRole);
-        if (!u->avatar.isNull()) {
-            i_sender->setIcon(u->avatar);
-        }
-        QStandardItem *i_content = new QStandardItem(content);
-        i_content->setData(val.property("id").toString(), Qt::UserRole);
-        QStandardItem *i_time = new QStandardItem(timestamp.toString("h:mmap"));
-        m_model->appendRow(QList<QStandardItem*>() << i_time << i_sender
-                           << i_content);
+    QFile f(":templates/message.txt");
+    f.open(QFile::ReadOnly);
+    QString temp(f.readAll());
+    f.close();
 
-        i_time->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
-        i_sender->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
-        i_content->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);
-    }
-    m_chat->resizeColumnToContents(0);
-    m_chat->resizeColumnToContents(1);
-    m_chat->resizeRowsToContents();
+    m_html->seek(m_html->size());
+    content = temp.arg(m_last_event_id,
+                       u->avatar_url().toString(),
+                       u->name, content);
+    m_html->write(content.toUtf8());
+    m_html->flush();
 
-    /* Next 3 lines are an attempted workaround for scrolling bug
-       sometimes when a chat comes in from the same person and adds to an
-       existing chat line in the GUI, it fails to scroll all the way down.
-       This attempts to let the gui re-layout itself before calling scroll
-       */
-    qApp->sendPostedEvents();
-    qApp->processEvents();
-    QTimer::singleShot(100, m_chat, SLOT(scrollToBottom()));
-
+    m_html->seek(0);
+    content = QString(m_html->readAll());
+    m_chat->setHtml(content);
+    m_chat->page()->mainFrame()->setScrollBarValue(
+            Qt::Vertical,
+            m_chat->page()->mainFrame()->scrollBarMaximum(Qt::Vertical));
     emit message_received(u->name, content, this);
 }
 
@@ -416,8 +382,8 @@ void TalkerRoom::submit_message(const QString &msg) {
 }
 
 void TalkerRoom::on_options_changed(QSettings *s) {
-    m_chat->setColumnHidden(0, !s->value("options/show_timestamps", true)
-                            .toBool());
+    /*m_chat->setColumnHidden(0, !s->value("options/show_timestamps", true)
+                            .toBool());*/
 }
 
 void TalkerRoom::on_user_updated(const TalkerUser *user) {
@@ -447,7 +413,8 @@ void TalkerRoom::system_message(const QString &time, const QString &message) {
     QStandardItem *i_msg = new QStandardItem(message);
     i_time->setForeground(QBrush(Qt::gray));
     i_msg->setForeground(QBrush(Qt::gray));
-    m_model->appendRow(QList<QStandardItem*>() << i_time << i_icon << i_msg);
+    m_html->write(QString("<div style=\"color: #999999;\">%1</div>\n")
+                  .arg(message).toUtf8());
 }
 
 QDateTime TalkerRoom::time_from_message(const QScriptValue &val) {

@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <QtGui>
 #include <QtNetwork>
 #include <QtScript>
+#include <QtWebKit>
 
 #include "talker_account.h"
 
@@ -42,7 +43,7 @@ public:
     QString name() const {return m_name;}
     // create a socket to the given room and start chatting
     void join_room() const;
-    QTableView *get_widget() const {return m_chat;}
+    QWidget *get_widget() const {return m_chat;}
     QMap<int, TalkerUser*> get_users() const {return m_users;}
 
     void save();
@@ -80,8 +81,8 @@ private:
     QNetworkAccessManager *m_net; // handles web requests for us
     QScriptEngine *m_engine; // used to parse JSON we get from the SSL sockets
     QTimer *m_timer; // used for keep-alives
-    QTableView *m_chat; // shows messages
-    QStandardItemModel *m_model; // stores messages
+    QWebView *m_chat; // shows messages
+    QTemporaryFile *m_html; // store messages
     QMap<int, TalkerUser*> m_users; // holds records of who is in room
 
     TalkerUser *add_user(const QScriptValue &user);
