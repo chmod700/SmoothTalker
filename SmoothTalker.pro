@@ -44,4 +44,5 @@ FORMS += main_window.ui \
     ui/options_dialog.ui \
     ui/about_dialog.ui
 RESOURCES += icons.qrc
-OTHER_FILES += 
+OTHER_FILES += resources/templates/message.txt \
+    resources/templates/stylesheet.txt

@@ -60,10 +60,28 @@ TalkerRoom::TalkerRoom(TalkerAccount *acct, const QString &room_name,
             SLOT(socket_state_changed(QAbstractSocket::SocketState)));
     connect(m_timer, SIGNAL(timeout()), SLOT(stay_alive()));
 
+    // open the temp file that will store the HTML of this room's chat log
     m_html->open();
-    m_html->write(QString("<table>").toUtf8());
-    m_chat->setStyleSheet("div {border: 1px solid red;}");
 
+    // open the HTML template resource
+    QFile f;
+    f.setFileName(":templates/message.txt");
+    f.open(QFile::ReadOnly);
+    f.seek(0);
+    m_message_template = QString(f.readAll()); // save this
+    f.close();
+
+
+    // open the CSS template resource
+    f.setFileName(":templates/stylesheet.txt");
+    f.open(QFile::ReadOnly);
+    f.seek(0);
+    QString css(f.readAll());
+    //qDebug() << "CSS is:" << css;
+    //qDebug() << "CSS UTF8 is:" << css.toUtf8();
+    m_html->write(css.toUtf8()); // start with the stylesheet
+    m_html->flush();
+    f.close();
     load();
 }
 
@@ -275,15 +293,16 @@ void TalkerRoom::handle_message(const QScriptValue &val) {
 
     //timestamp.toString("h:mmap")
 
-    QFile f(":templates/message.txt");
-    f.open(QFile::ReadOnly);
-    QString temp(f.readAll());
-    f.close();
+    QString who("other");
+    if (m_user_id == u->id)
+        who = "myself";
 
     m_html->seek(m_html->size());
-    content = temp.arg(m_last_event_id,
-                       u->avatar_url().toString(),
-                       u->name, content);
+    content = m_message_template.arg(m_last_event_id,
+                                     u->avatar_url("16").toString(), u->name,
+                                     content, who);
+    qDebug() << "-------------------------------------------------"
+            << content;
     m_html->write(content.toUtf8());
     m_html->flush();
 
@@ -368,12 +387,13 @@ void TalkerRoom::submit_message(const QString &msg) {
         return; // don't send blank messages
     }
     if (m_ssl && m_ssl->isEncrypted()) {
-        QString encoded = Qt::escape(msg);
+        /*QString encoded = Qt::escape(msg);
         encoded = encoded.replace("\r\n", "<br/>", Qt::CaseSensitive);
         encoded = encoded.replace("\n", "<br/>", Qt::CaseSensitive);
         encoded = encoded.replace("\r", "<br/>", Qt::CaseSensitive);
+        */
         QString body = QString("{\"type\":\"message\",\"content\":\"%1\"}\r\n")
-                       .arg(encoded);
+                       .arg(msg);
         //qDebug() << "\tSENDING:" << body.toAscii();
         m_ssl->write(body.toAscii());
     } else {
@@ -408,12 +428,10 @@ TalkerUser *TalkerRoom::add_user(const QScriptValue &user) {
 
 void TalkerRoom::system_message(const QString &time, const QString &message) {
     QStandardItem *i_time = new QStandardItem(time);
-    QStandardItem *i_icon = new QStandardItem(
-            QIcon(":img/icons/information.png"), "");
     QStandardItem *i_msg = new QStandardItem(message);
     i_time->setForeground(QBrush(Qt::gray));
     i_msg->setForeground(QBrush(Qt::gray));
-    m_html->write(QString("<div style=\"color: #999999;\">%1</div>\n")
+    m_html->write(QString("<div class=\"system_message\">%1</div>\n")
                   .arg(message).toUtf8());
 }
 

@@ -1,10 +1,5 @@
-<div id="%1" class="event" style="border: 1px solid black; padding: 4px;>
-    <div class="avatar" style="display: block; width: 20%; float: left; border: 1px solid red; margin-right: 10px;">
-        <img src="%2" alt="avatar for %3" align="left" width="24" height="24"/>
-        <h4>%3</h4>
-    </div>
-    <div class="message" style="display: block; width: 60%; float: left; border: 1px solid blue; background: #CCCCCC;">
-        %4
-    </div>
-    <br style="clear: both;" />
+<div id="event_%1" class="event">
+    <div class="avatar" style="background: url('%2') no-repeat;"><b>%3</b></div>
+    <div class="message %5">%4</div>
+	<br style="clear: both;" />
 </div>

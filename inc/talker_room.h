@@ -84,6 +84,7 @@ private:
     QWebView *m_chat; // shows messages
     QTemporaryFile *m_html; // store messages
     QMap<int, TalkerUser*> m_users; // holds records of who is in room
+    QString m_message_template; // holds the HTML template for a message
 
     TalkerUser *add_user(const QScriptValue &user);
     QDateTime time_from_message(const QScriptValue &val);

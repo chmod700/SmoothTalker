@@ -42,7 +42,7 @@ public:
     bool idle;
 
     bool valid() const {return id != -1;}
-    QUrl avatar_url();
+    QUrl avatar_url(const QString &size = "48");
 
 public slots:
     void request_avatar(QNetworkAccessManager *net); // get avatar from web

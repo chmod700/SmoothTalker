@@ -1,0 +1,27 @@
+<style type="text/css">
+div.avatar {
+    padding-top: 32px;
+    display: block;
+    width: 64px;
+    float: left;
+    overflow: hidden;
+}
+div.message {
+    margin-left: 80px;
+    -moz-border-radius: 4px;
+    -webkit-border-radius: 4px;
+    padding: 4px;
+}
+div.myself {
+    background: #FAEEDE;
+}
+div.other {
+    background: #DDEFF8;
+}
+div.system_message {
+    color: #999999;
+    background: #F0F0F0;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+</style>

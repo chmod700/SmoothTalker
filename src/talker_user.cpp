@@ -37,14 +37,13 @@ TalkerUser::TalkerUser(const QString &name, const QString &email,
     qDebug() << "new user" << name << "email" << email << "id" << id;
 }
 
-QUrl TalkerUser::avatar_url() {
+QUrl TalkerUser::avatar_url(const QString &size) {
     if (!m_avatar_url.isValid()) {
         QCryptographicHash email_hash(QCryptographicHash::Md5);
         email_hash.addData(email.toAscii());
         QString hash(email_hash.result().toHex());
 
         // optional settings for avatar
-        QString size("48"); // TODO: move this to options
         //QString default_type("identicon"); // TODO: move this to options
         QString default_type("wavatar"); // TODO: move this to options
 

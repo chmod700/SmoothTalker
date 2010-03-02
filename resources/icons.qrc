@@ -9,5 +9,6 @@
         <file>img/icons/information.png</file>
         <file>img/icons/sound.png</file>
         <file>templates/message.txt</file>
+        <file>templates/stylesheet.txt</file>
     </qresource>
 </RCC>
